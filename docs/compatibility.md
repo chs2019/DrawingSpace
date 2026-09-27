@@ -1,31 +1,33 @@
 # Compatibility and parity boundary
 
-DrawingSpace 0.1.0-alpha.1 is a functional, independent diagram editor with a Visio-style desktop workspace. The table distinguishes implemented behavior from absent or limited behavior. A similarly named command is not evidence of complete Visio compatibility.
+DrawingSpace 0.2.0-alpha.1 is an independent Uno/Skia diagram editor. This ledger is for the feature branch. A feature with an implementation is not automatically a complete reproduction of Microsoft Visio.
 
-| Area | Implemented | Not implemented / limited |
+| Area | Implemented | Remaining boundary |
 | --- | --- | --- |
-| Workspace | Blue title bar, ribbon tabs/groups, stencil pane, rulers, page tabs, status zoom, task panes | Not pixel-identical; no full Backstage view, ribbon customization, QAT customization, floating panes, or multi-window document UX |
-| Controls | Custom buttons, ribbon, vector icons, gallery, palette, page strip, editor | TextBox, ComboBox, Slider, ScrollViewer and ContentDialog remain Uno controls, not complete custom replacements |
-| Shapes | 43 original stencil masters; 29 geometry kinds; label/style/data/comments | No arbitrary user path editor, ShapeSheet, geometry formula language, proprietary stencil import, or complete built-in Visio libraries |
-| Editing | Move, eight-handle resize, rotate, inline label edit, selection, undo/redo, clipboard, alignment, distribution, stacking | No full text rich formatting, nested groups, affine group transforms, shape replacement semantics, geometry Boolean operations, or object-level accessibility tree |
-| Connectors | Glued shape IDs/cardinal ports, straight/orthogonal paths, arrows, labels, AutoConnect insertion | No complete Visio routing parity, line jumps, endpoint reattachment handles, user-editable routing waypoints, arbitrary connection points, or routing guarantees in congested diagrams |
-| Containers | Container and lane-like geometry, ordering, labels | No semantic containment, automatic membership, moving/resizing children with containers, or cross-functional flowchart lane management |
-| Organization | Original editable template and directed auto-layout | No HR import wizard, synchronized organization data, role-based expansion, or complete organization-chart rules |
-| Documents | Named pages, layer flags, native JSON validation, local recovery | No VSD/VSDX/VSSX import/export, XML ShapeSheet, legacy formats, master-instance inheritance, background pages, or lossless Office round-trip |
-| Text | Unicode strings, word/grapheme-aware wrapping, font size, color, bold/italic, four bundled fallback styles | No HarfBuzz shaping integration, full bidirectional/complex-script fidelity, rich text runs, paragraph formatting, custom font upload, or font embedding in SVG |
-| Data | Editable key/value shape data, CSV export, local comments, basic validation | No database/Excel linking, live data graphics, external data refresh, BPMN validation, engineering-rule certification, or threaded collaboration |
-| Export | SVG/PNG current page, PDF all pages, shape-data CSV | No print preview, tiled printing, export dialogs with complete resolution/options, accessible tagged PDF, or Office export fidelity guarantee |
-| Platforms | Real Uno browser app plus Windows/macOS/Linux desktop host builds | No Android/iOS native targets; touch/pinch paths are implemented but not a physical-device certification; no native signing/installers |
-| Collaboration | Local editing and recovery | No authentication, cloud synchronization, multiplayer, permissions, or sharing service |
-| Automation | Reusable .NET editing API and read-only browser test diagnostics | No Visio COM/VBA, VSTO, Office add-ins, plugin marketplace, or scripting engine |
-| Performance | Viewport culling, route/font caches, bounded history/export allocation | No claim of million-shape performance; large documents need indexing, incremental routes and delta history |
+| Workspace | Visio-style ribbon, stencils, rulers, page tabs, task panes; Developer feature panes | Not pixel-identical; full Backstage/QAT/ribbon customization, floating panes and multi-window document UX absent |
+| Controls | Custom buttons, ribbon, vector icons, gallery, palette, page strip and canvas | TextBox, ComboBox, Slider, ScrollViewer and ContentDialog still use Uno primitives |
+| Files | Managed VSDX/VSSX/VSTX read/write, VDX read, binary file pickers, OPC validation, preservation/diagnostics | Binary VSD unsupported; no independent Microsoft Visio certification; unsupported geometry/formulas may be preserved but not interpreted; no arbitrary lossless Office round-trip claim |
+| ShapeSheet | Dimensional units, parser/evaluator, lazy conditions, references, cycle/budget diagnostics, GUARD/SETATREF subset, task-pane editing, transactional recalculation | Not the entire ShapeSheet function language, events, themes, action cells or every geometry section |
+| Masters | Libraries, identity-safe import, multi-shape insertion with internal connectors/groups, per-instance Sheet references, editable root text/size/fill, local overrides | Full nested-master semantics, arbitrary multi-shape master authoring and all propagation rules remain incomplete |
+| Editing | Selection, move/resize/rotate, shared eight-handle multi-selection resize and rotation, snapshot-based affine transforms, descendant-aware transactions, grouping, custom geometry rendering/hit tests | Imported group ungroup/clipboard and constrained-transform edge cases, arbitrary point editor, Boolean tools and full object accessibility remain incomplete |
+| Containers | Acyclic semantic membership, transitive transform closure, fit, membership lock, lane layout and task-pane tools | Full cross-functional flowchart rules and arbitrary affine lane layout are not reproduced |
+| Connectors | Custom cardinal/normalized ports, direction flags, endpoint reattachment/detachment, waypoint insertion/move/removal, normal-constrained segment dragging with endpoint doglegs, label drag, arc/gap/square jumps | No guarantees for all congested routes; no junction topology or full line-jump priority parity; crossing analysis bounded |
+| Text | HarfBuzz shaping, Unicode bidi/line breaks, text spans/paragraphs, range formatting UI, caret hit-testing and outlined SVG shape text | No full Visio text-control UX/IME certification, fonts for every script, complex connector-label parity, complete SVG text decoration fidelity or font upload |
+| Export | Background-aware SVG/PNG, foreground-page PDF with backgrounds, embedded raster images, affine paths, connector jumps and text outlines | No tiled print preview/dialog parity, tagged PDF, editable text in outlined SVG or Office fidelity guarantee |
+| Comments | Local threads, replies, resolve/reopen, undo and JSON persistence | No authenticated collaboration, transport, cloud storage, permissions or multiplayer conflict resolution |
+| Data | Shape-data values/CSV and basic structural validation | No live database/Excel links, full data graphics, BPMN or engineering certification |
+| Automation | Reusable .NET model/engine/editing API, read-only opt-in browser diagnostics | No Visio COM/VBA/VSTO compatibility, Office add-ins, plugin marketplace or scripting host |
+| Platforms | Actual Uno WebAssembly and native desktop projects | No mobile-native targets, signing/installers or exhaustive GPU/device/accessibility certification |
+| Performance | Route/text caches, viewport culling, bounded image decode/cache, input/geometry/history safeguards; selection transform snapshots avoid copying rich resources | No million-shape or constant-time update claims; full-document transactions and route recalculation still need optimization |
 
-## File and model limits
+## Input and resource limits
 
-Native JSON is limited to 32 MiB of text, 256 pages, 256 layers per page, and 50,000 objects per drawing. These are input safeguards, not performance guarantees. Page size is 24–100,000 drawing pixels; shape dimensions are 1–100,000 pixels. PNG export is bounded to 16,384 pixels per dimension and 64 million pixels total.
+Binary picker input is capped at 32 MiB. The Visio parser applies its stricter package/expanded-part budgets. Native JSON uses the existing 32 MiB text limit, 256 pages, 4096 masters, 256 layers per page and 50,000 total objects. Explicit waypoint lists are limited to 4096 points; segment dragging accepts at most 4094 route vertices to reserve space for endpoint doglegs. Parsing and formula evaluation have independent recursion/operation budgets. These are safeguards, not performance guarantees.
 
-The router inspects a bounded set of nearby obstacles and reports fallbacks rather than silently claiming every route is clear. The diagram validator checks basic connection and page conditions only. It is not a substitute for a domain-specific design review.
+PNG export is capped at 16,384 pixels per dimension and 64 million pixels total. Raster decoding is limited to 16 million pixels per image; the decoded image cache has a 64 MiB budget and a 32-image count cap. Runtime allocations outside that cache, including transient encoded/decoded buffers, are additional.
 
-## Fidelity priorities
+## Verification
 
-The next major compatibility areas are a properly scoped VSDX package reader/writer with round-trip fixtures, a ShapeSheet-compatible formula model, semantic master instances and containers, rich text shaping, endpoint reattachment and line jumps, complete keyboard/accessibility coverage, and broader visual regression tests. These are separate engineering deliverables, not features already present in this alpha.
+Use the exact commit's engine, native compilation and browser acceptance reports. Unit tests include structured package fixtures, same-instance formula references, bundle identities, undo, ports, routes, affine selection snapshots, segment gestures, Unicode layout and export contracts. Browser tests drive real pointer/keyboard/file-picker actions, including shared selection grips and segment dragging. No simulated screenshot or diagnostic mutation substitutes for user input. Microsoft Visio interoperability, physical-device behavior and screenshot parity must not be inferred merely from successful compilation.
+
+For interaction details and embedding examples, see [Selection transforms and connector editing](advanced-editing.md).

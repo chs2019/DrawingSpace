@@ -40,3 +40,12 @@ The host configures the UI with Uno's Open Sans font manifest and loads four sta
 ## Testing and deployment
 
 Unit tests exercise headless geometry, documents, routing, history, and native Skia export. Browser tests observe read-only diagnostics and send actual pointer/keyboard events. CI publishes screenshots and reports. Pages consumes only a successful main-branch Build artifact and checks its recorded commit before deployment; public-site tests verify the deployed app independently of the local test server.
+
+
+## Feature-branch extensions
+
+The model now carries ShapeSheet cells, local overrides, master/template/instance identities, affine frames, nested group anchors, semantic containment, rich-text spans/paragraphs, custom ports and preserved Visio package metadata. `MasterBundle` makes insertion of shapes, connectors and groups one transaction. Formula scope resolves numeric master Sheet references within an instance before searching a page.
+
+`DrawingSpace.Visio` implements bounded file detection and OPC interchange. `IBinaryWorkspaceStorage` adds byte-based file picking without changing the existing storage contract. `DrawingSpace.Text` owns a bounded layout LRU; `SceneRenderer` borrows layouts and owns font/image/render caches. Text-layout cache keys omit world translation but include text/style/paragraph/box state. Affine geometry and background composition are shared by the editor and exported pages.
+
+The canvas captures an immutable gesture snapshot for each edited shape/connector and updates a document preview during pointer moves. Endpoint/waypoint/label changes commit once on release; cancellation restores the transaction snapshot. Browser diagnostics expose read-only model observations and control bounds, including popup contents, only with `?test=1`.

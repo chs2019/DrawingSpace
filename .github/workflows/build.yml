@@ -1,7 +1,7 @@
 name: Build
 on:
   push:
-    branches: [main]
+    branches: [main, feat/visio-parity]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -76,6 +76,10 @@ jobs:
             artifacts/browser-results.json
             artifacts/browser-snapshot.json
             artifacts/browser-console.log
+            artifacts/advanced-results.json
+            artifacts/advanced-snapshot.json
+            artifacts/advanced-console.log
+            artifacts/failure-*.json
             artifacts/server.log
           if-no-files-found: ignore
       - name: Source archive

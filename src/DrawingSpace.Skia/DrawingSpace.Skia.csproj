@@ -3,5 +3,6 @@
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="3.119.2" />
     <ProjectReference Include="../DrawingSpace.Routing/DrawingSpace.Routing.csproj" />
+    <ProjectReference Include="../DrawingSpace.Text/DrawingSpace.Text.csproj" />
   </ItemGroup>
 </Project>

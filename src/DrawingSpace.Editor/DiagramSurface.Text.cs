@@ -1,4 +1,5 @@
 using DrawingSpace.Controls;
+using DrawingSpace.Routing;
 
 namespace DrawingSpace.Editor;
 
@@ -11,7 +12,8 @@ public sealed partial class DiagramSurface
         var shape = session.Page.Find(objectId); var edge = session.Page.Connectors.FirstOrDefault(c => c.Id == objectId);
         if (shape is null && edge is null || shape is not null && session.Page.IsLocked(shape) || edge is not null && (session.Page.Layers.FirstOrDefault(l => l.Id == edge.LayerId)?.Locked ?? false)) return;
         session.Select(objectId);
-        var bounds = shape?.WorldBounds ?? new RectD(Renderer.Routes(session.Page, session.Revision)[objectId].Midpoint.X - 75, Renderer.Routes(session.Page, session.Revision)[objectId].Midpoint.Y - 20, 150, 40);
+        var labelPoint = edge is null ? PointD.Zero : LineJumpService.LabelPoint(edge, Renderer.Routes(session.Page, session.Revision)[objectId]);
+        var bounds = shape?.WorldBounds ?? new RectD(labelPoint.X - 75, labelPoint.Y - 20, 150, 40);
         var origin = session.Viewport.ToScreen(new(bounds.X, bounds.Y));
         var editor = OfficeTheme.Field(shape?.Text ?? edge!.Text, "Shape text");
         editor.AcceptsReturn = true; editor.TextWrapping = TextWrapping.Wrap;
@@ -36,7 +38,7 @@ public sealed partial class DiagramSurface
         {
             var shape = session.Page.Find(id); var edge = session.Page.Connectors.FirstOrDefault(c => c.Id == id);
             if (shape is not null && shape.Text != editor.Text || edge is not null && edge.Text != editor.Text)
-                session.Execute("Edit text", () => { if (shape is not null) shape.Text = editor.Text; else if (edge is not null) edge.Text = editor.Text; });
+                session.Execute("Edit text", () => { if (shape is not null) RichTextOperations.ReplaceAll(shape, editor.Text); else if (edge is not null) edge.Text = editor.Text; });
         }
         Invalidate();
     }

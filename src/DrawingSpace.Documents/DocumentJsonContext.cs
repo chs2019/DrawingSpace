@@ -2,6 +2,15 @@ using System.Text.Json.Serialization;
 
 namespace DrawingSpace.Documents;
 
-[JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, UseStringEnumConverter = true)]
+[JsonSourceGenerationOptions(WriteIndented = true, IgnoreReadOnlyProperties = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, UseStringEnumConverter = true)]
 [JsonSerializable(typeof(DiagramDocument))]
-internal partial class DocumentJsonContext : JsonSerializerContext { }
+[JsonSerializable(typeof(DiagramPage))]
+[JsonSerializable(typeof(DiagramMaster))]
+[JsonSerializable(typeof(DiagramGroup))]
+[JsonSerializable(typeof(DiagramLayer))]
+[JsonSerializable(typeof(Shape))]
+[JsonSerializable(typeof(Connector))]
+[JsonSerializable(typeof(ShapeCell))]
+[JsonSerializable(typeof(CommentThread))]
+[JsonSerializable(typeof(CommentMessage))]
+public partial class DocumentJsonContext : JsonSerializerContext { }

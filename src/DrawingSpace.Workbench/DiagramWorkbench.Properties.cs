@@ -7,12 +7,18 @@ public sealed partial class DiagramWorkbench
     private void RebuildProperties()
     {
         _properties.Children.Clear();
-        var title = _pane switch { "data" => "Shape Data", "layers" => "Layers", "comments" => "Comments", "validation" => "Issues", "page" => "Page Setup", _ => "Format Shape" };
+        var title = _pane switch { "shapesheet" => "ShapeSheet", "masters" => "Document Masters", "containers" => "Containers", "richtext" => "Text Formatting", "connections" => "Connections", "import" => "Import Diagnostics", "data" => "Shape Data", "layers" => "Layers", "comments" => "Comments", "validation" => "Issues", "page" => "Page Setup", _ => "Format Shape" };
         var header = new Grid { ColumnDefinitions = { new() { Width = new GridLength(1, GridUnitType.Star) }, new() { Width = GridLength.Auto } } };
         header.Children.Add(OfficeTheme.Text(title, 18));
         var close = new OfficeButton("", OfficeIcon.Close, action: () => ShowPane(_pane)) { Width = 26, Height = 26 };
         AutomationProperties.SetName(close, "Close task pane"); Grid.SetColumn(close, 1); header.Children.Add(close); _properties.Children.Add(header);
         _properties.Children.Add(OfficeTheme.Rule());
+        if (_pane == "shapesheet") { BuildShapeSheetPane(); return; }
+        if (_pane == "masters") { BuildMastersPane(); return; }
+        if (_pane == "containers") { BuildContainersPane(); return; }
+        if (_pane == "richtext") { BuildRichTextPane(); return; }
+        if (_pane == "connections") { BuildConnectionsPane(); return; }
+        if (_pane == "import") { BuildImportPane(); return; }
         if (_pane == "layers") { BuildLayers(); return; }
         if (_pane == "validation") { BuildIssues(); return; }
         if (_pane == "page") { BuildPageProperties(); return; }
@@ -43,7 +49,7 @@ public sealed partial class DiagramWorkbench
             Number("Opacity", shape.Style.Opacity, value => Session.Format(s => s.Opacity = value), 0, 1);
             Section("Text");
             var text = OfficeTheme.Field(shape.Text, "Label text"); text.AcceptsReturn = true; text.TextWrapping = TextWrapping.Wrap; text.MinHeight = 70; text.MaxHeight = 140;
-            text.LostFocus += (_, _) => { if (!_refreshing && Session.Page.Find(id) is { } current && current.Text != text.Text) Guard(() => EditShape(id, "Edit label", s => s.Text = text.Text)); };
+            text.LostFocus += (_, _) => { if (!_refreshing && Session.Page.Find(id) is { } current && current.Text != text.Text) Guard(() => EditShape(id, "Edit label", s => RichTextOperations.ReplaceAll(s, text.Text))); };
             _properties.Children.Add(text);
             Number("Font size", shape.Style.FontSize, value => Session.Format(s => s.FontSize = value), 1, 1024);
             _properties.Children.Add(OfficeTheme.Row(Command("Bold", OfficeIcon.Bold, () => Session.Format(s => s.Bold = !s.Bold)), Command("Italic", OfficeIcon.Italic, () => Session.Format(s => s.Italic = !s.Italic))));
@@ -151,14 +157,29 @@ public sealed partial class DiagramWorkbench
         var count = 0;
         foreach (var shape in shapes)
         {
-            if (shape.Comments.Count == 0) continue;
+            if (shape.Comments.Count == 0 && shape.Threads.Count == 0) continue;
             Section(shape.Name);
-            foreach (var comment in shape.Comments)
+            foreach (var comment in shape.Comments) { Paragraph(comment); count++; }
+            foreach (var thread in shape.Threads.Take(100))
             {
-                Paragraph(comment); _properties.Children.Add(OfficeTheme.Rule()); count++;
+                var shapeId = shape.Id; var threadId = thread.Id;
+                Paragraph(thread.Resolved ? "Resolved discussion" : "Open discussion");
+                foreach (var message in thread.Messages.TakeLast(50))
+                {
+                    Paragraph(message.Author + " · " + message.CreatedAt.ToLocalTime().ToString("g"));
+                    Paragraph(message.Text);
+                }
+                _properties.Children.Add(Command("Reply to discussion", OfficeIcon.Comment, () => RunAsync(async () =>
+                {
+                    var text = await PromptAsync("Reply", "Reply text", "", true);
+                    if (!string.IsNullOrWhiteSpace(text)) Session.AddComment(shapeId, "You", text.Trim(), threadId);
+                })));
+                _properties.Children.Add(Command(thread.Resolved ? "Reopen discussion" : "Resolve discussion", OfficeIcon.Check, () => Session.ResolveComment(shapeId, threadId, !thread.Resolved)));
+                _properties.Children.Add(OfficeTheme.Rule()); count++;
             }
         }
         if (count == 0) Paragraph(selected is null ? "Select a shape to add a local comment." : "No comments on this shape.");
+        Paragraph("Discussions are stored in this drawing. They are not synchronized with other users.");
         _properties.Children.Add(Command("New comment", OfficeIcon.Comment, () => RunAsync(AddCommentAsync), enabled: () => Session.SelectedShapes.Count == 1));
     }
     private void BuildIssues()

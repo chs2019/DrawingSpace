@@ -1,9 +1,16 @@
 {
   "name": "drawingspace-validation",
   "private": true,
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0-alpha.1",
   "type": "module",
-  "scripts": { "test:browser": "node scripts/browser-test.mjs" },
-  "devDependencies": { "@playwright/test": "1.55.1" },
-  "engines": { "node": ">=22" }
+  "scripts": {
+    "test:browser": "node scripts/run-browser-tests.mjs",
+    "test:browser:advanced": "node scripts/advanced-editing-test.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.55.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
 }

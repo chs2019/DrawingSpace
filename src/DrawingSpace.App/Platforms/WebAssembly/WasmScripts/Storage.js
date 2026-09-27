@@ -45,6 +45,32 @@
         input.click();
       });
     },
+    async openBinary() {
+      return new Promise((resolve, reject) => {
+        const input = document.createElement('input'); input.type = 'file';
+        input.accept = '.json,.drawingspace,.vsdx,.vssx,.vstx,.vdx,.vsd'; input.hidden = true;
+        document.body.append(input);
+        let settled = false;
+        const finish = (value, error) => {
+          if (settled) return; settled = true; input.remove();
+          error ? reject(error) : resolve(value);
+        };
+        input.addEventListener('cancel', () => finish(''), { once: true });
+        input.addEventListener('change', async () => {
+          const file = input.files?.[0]; if (!file) return finish('');
+          try {
+            if (file.size > 32 * 1024 * 1024) throw new Error('The drawing exceeds the 32 MiB file limit.');
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            // Chunking avoids argument-stack overflow for multi-megabyte ZIP documents.
+            const parts = [];
+            for (let offset = 0; offset < bytes.length; offset += 32768)
+              parts.push(String.fromCharCode(...bytes.subarray(offset, offset + 32768)));
+            finish(JSON.stringify({ name: file.name, base64: btoa(parts.join('')) }));
+          } catch (error) { finish('', error); }
+        }, { once: true });
+        input.click();
+      });
+    },
     async download(name, base64, contentType) {
       const binary = atob(base64); const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);

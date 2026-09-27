@@ -37,7 +37,7 @@ public partial class App : Application
             await ApplicationFonts.ConfigureAsync(_workbench.Surface.Renderer);
             _window.Content = _workbench;
             _window.Closed += (_, _) => _workbench.Dispose();
-            _window.Activated += (_, e) => { if (e.WindowActivationState == Windows.UI.Core.CoreWindowActivationState.Deactivated) _workbench.Surface.IsSpaceDown = false; };
+            _window.Activated += (_, e) => { if (e.WindowActivationState == Windows.UI.Core.CoreWindowActivationState.Deactivated) _workbench.Surface.ResetModifierKeys(); };
             if (warning is not null) _workbench.ShowStatus(warning, true);
 #if __WASM__
             BrowserDiagnostics.Attach(session, _workbench, _window);

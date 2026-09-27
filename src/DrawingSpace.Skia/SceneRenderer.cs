@@ -2,30 +2,40 @@ using DrawingSpace.Core;
 using DrawingSpace.Documents;
 using DrawingSpace.Routing;
 using SkiaSharp;
+using DrawingSpace.Text;
 
 namespace DrawingSpace.Skia;
 
 public sealed partial class SceneRenderer : IDisposable
 {
     private readonly OrthogonalRouter _router = new();
+    private RichTextLayoutEngine? _richText;
+    private IReadOnlyDictionary<string, IReadOnlyList<LineJump>> _jumps = new Dictionary<string, IReadOnlyList<LineJump>>();
+    public bool LineJumpBudgetExceeded { get; private set; }
+    public RichTextLayoutEngine TextEngine => _richText ??= new(style => _fallbackTypeface is null ? null : _fallbackStyles.GetValueOrDefault((style.Bold, style.Italic), _fallbackTypeface));
     private readonly Dictionary<string, RouteResult> _routes = [];
     private readonly Dictionary<string, (SKTypeface Typeface, SKFont Font)> _fonts = [];
     private DiagramPage? _routePage;
+    private bool _routePrinting;
     private long _revision = -1;
     private SKTypeface? _fallbackTypeface;
     private readonly Dictionary<(bool Bold, bool Italic), SKTypeface> _fallbackStyles = [];
     public void SetTypeface(SKTypeface typeface)
     {
+        _richText?.Dispose(); _richText = null;
         foreach (var entry in _fonts.Values) { entry.Font.Dispose(); entry.Typeface.Dispose(); }
         _fonts.Clear(); _fallbackTypeface?.Dispose(); _fallbackTypeface = typeface;
     }
     public void ClearCache() { _routePage = null; _routes.Clear(); }
-    public IReadOnlyDictionary<string, RouteResult> Routes(DiagramPage page, long revision)
+    public IReadOnlyDictionary<string, RouteResult> Routes(DiagramPage page, long revision, bool printing = false)
     {
-        if (!ReferenceEquals(page, _routePage) || _revision != revision)
+        if (!ReferenceEquals(page, _routePage) || _revision != revision || _routePrinting != printing)
         {
-            _routePage = page; _revision = revision; _routes.Clear();
-            foreach (var edge in page.Connectors.Where(c => page.IsVisible(c.LayerId))) _routes[edge.Id] = _router.Route(page, edge);
+            _routePage = page; _revision = revision; _routePrinting = printing; _routes.Clear();
+            var visibleEdges = page.Connectors.Where(c => page.IsVisible(c.LayerId) && (!printing || page.IsPrintable(c.LayerId))).ToArray();
+            foreach (var edge in visibleEdges) _routes[edge.Id] = _router.Route(page, edge);
+            var analysis = LineJumpService.Analyze(visibleEdges, _routes);
+            _jumps = analysis.Jumps; LineJumpBudgetExceeded = analysis.BudgetExceeded;
         }
         return _routes;
     }
@@ -43,12 +53,12 @@ public sealed partial class SceneRenderer : IDisposable
         _fonts[key] = (typeface, font);
         return font;
     }
-    public void DrawPage(SKCanvas canvas, DiagramPage page, long revision, bool grid = false, RectD? visible = null, bool printing = false)
+    public void DrawPage(SKCanvas canvas, DiagramPage page, long revision, bool grid = false, RectD? visible = null, bool printing = false, bool drawBackground = true)
     {
         using var background = new SKPaint { Color = SKColor.Parse(page.Background) };
-        canvas.DrawRect(ShapeGeometry.Rect(page.Bounds), background);
+        if (drawBackground) canvas.DrawRect(ShapeGeometry.Rect(page.Bounds), background);
         if (grid) DrawGrid(canvas, page, visible ?? page.Bounds);
-        var routes = Routes(page, revision);
+        var routes = Routes(page, revision, printing);
         bool Visible(string layer) => page.IsVisible(layer) && (!printing || page.IsPrintable(layer));
         foreach (var shape in page.Shapes.Where(s => s.Kind == ShapeKind.Container && Visible(s.LayerId)))
             if (visible is null || shape.WorldBounds.Intersects(visible.Value)) DrawShape(canvas, shape);
@@ -71,15 +81,27 @@ public sealed partial class SceneRenderer : IDisposable
     public void DrawShape(SKCanvas canvas, Shape shape)
     {
         canvas.Save();
-        var center = shape.Bounds.Center;
-        canvas.RotateDegrees((float)shape.Rotation, (float)center.X, (float)center.Y);
+        canvas.Concat(ShapeGeometry.Matrix(shape.DrawingMatrix));
         using var path = ShapeGeometry.Create(shape);
         using var details = ShapeGeometry.Details(shape);
         using var fill = new SKPaint { IsAntialias = true, Color = Color(shape.Style.Fill, shape.Style.Opacity) };
         using var dash = shape.Style.Dashed ? SKPathEffect.CreateDash([6, 4], 0) : null;
         using var stroke = new SKPaint { IsAntialias = true, Color = Color(shape.Style.Stroke, shape.Style.Opacity), Style = SKPaintStyle.Stroke, StrokeWidth = (float)shape.Style.StrokeWidth, StrokeJoin = SKStrokeJoin.Round, PathEffect = dash };
-        if (shape.Kind != ShapeKind.Annotation) canvas.DrawPath(path, fill);
-        if (shape.Style.StrokeWidth > 0) { canvas.DrawPath(path, stroke); canvas.DrawPath(details, stroke); }
+        if (shape.Geometry.Count > 0)
+        {
+            foreach (var figure in shape.Geometry)
+            {
+                using var figurePath = ShapeGeometry.CreateFigure(shape, figure);
+                if (figure.Filled) canvas.DrawPath(figurePath, fill);
+                if (figure.Stroked && shape.Style.StrokeWidth > 0) canvas.DrawPath(figurePath, stroke);
+            }
+        }
+        else
+        {
+            if (shape.Kind != ShapeKind.Annotation) canvas.DrawPath(path, fill);
+            if (shape.Style.StrokeWidth > 0) { canvas.DrawPath(path, stroke); canvas.DrawPath(details, stroke); }
+        }
+        DrawImage(canvas, shape);
         DrawText(canvas, shape);
         canvas.Restore();
     }
@@ -107,29 +129,21 @@ public sealed partial class SceneRenderer : IDisposable
     private void DrawText(SKCanvas canvas, Shape shape)
     {
         if (string.IsNullOrEmpty(shape.Text)) return;
-        var layout = Layout(shape); var font = Font(shape.Style);
-        using var paint = new SKPaint { IsAntialias = true, Color = Color(shape.Style.TextColor, shape.Style.Opacity) };
-        canvas.Save(); canvas.ClipRect(ShapeGeometry.Rect(shape.Bounds.Inflate(-1)));
-        var y = layout.Y;
-        foreach (var line in layout.Lines)
-        {
-            var x = layout.Left ? layout.X : layout.X - font.MeasureText(line) / 2;
-            canvas.DrawText(line, x, y, font, paint); y += layout.LineHeight;
-        }
-        canvas.Restore();
+        TextEngine.Layout(shape).Paint(canvas, new(shape.X, shape.Y));
     }
+
     public void DrawConnector(SKCanvas canvas, Connector connector, RouteResult route)
     {
         if (route.Points.Count < 2) return;
         using var dash = connector.Dashed ? SKPathEffect.CreateDash([7, 5], 0) : null;
         using var paint = new SKPaint { IsAntialias = true, Color = SKColor.Parse(connector.Color), Style = SKPaintStyle.Stroke, StrokeWidth = (float)connector.Width, StrokeJoin = SKStrokeJoin.Round, PathEffect = dash };
-        using var path = Polyline(route.Points); canvas.DrawPath(path, paint);
+        using var path = ConnectorPath(connector, route, _jumps.GetValueOrDefault(connector.Id)); canvas.DrawPath(path, paint);
         DrawArrow(canvas, route.Points[1], route.Points[0], connector.StartArrow, connector.Color, connector.Width);
         DrawArrow(canvas, route.Points[^2], route.Points[^1], connector.EndArrow, connector.Color, connector.Width);
         if (!string.IsNullOrWhiteSpace(connector.Text))
         {
             var font = Font(new() { FontSize = 12 }); var label = connector.Text.Length > 120 ? connector.Text[..120] + "…" : connector.Text;
-            var position = route.Midpoint; var width = font.MeasureText(label);
+            var position = LineJumpService.LabelPoint(connector, route); var width = font.MeasureText(label);
             using var fill = new SKPaint { IsAntialias = true, Color = SKColors.White };
             canvas.DrawRoundRect(new((float)position.X - width / 2 - 5, (float)position.Y - 10, (float)position.X + width / 2 + 5, (float)position.Y + 10), 3, 3, fill);
             fill.Color = SKColor.Parse("#405574"); canvas.DrawText(label, (float)position.X - width / 2, (float)position.Y + 4, font, fill);
@@ -176,6 +190,8 @@ public sealed partial class SceneRenderer : IDisposable
     public void Dispose()
     {
         foreach (var entry in _fonts.Values) { entry.Font.Dispose(); entry.Typeface.Dispose(); }
+        _richText?.Dispose(); _richText = null;
+        foreach (var image in _images.Values) image.Image.Dispose(); _images.Clear();
         _fonts.Clear(); _fallbackTypeface?.Dispose(); _fallbackTypeface = null;
         foreach (var typeface in _fallbackStyles.Values.Distinct()) typeface.Dispose();
         _fallbackStyles.Clear(); _routes.Clear();

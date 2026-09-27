@@ -5,11 +5,18 @@ using SkiaSharp;
 namespace DrawingSpace.Skia;
 
 /// <summary>Original normalized vector geometry shared by rendering, hit testing, stencil previews and SVG export.</summary>
-public static class ShapeGeometry
+public static partial class ShapeGeometry
 {
     public static SKRect Rect(RectD r) => new((float)r.Left, (float)r.Top, (float)r.Right, (float)r.Bottom);
     public static SKPath Create(Shape shape)
     {
+        if (shape.Geometry.Count > 0)
+        {
+            var combined = new SKPath();
+            foreach (var figure in shape.Geometry) { using var part = CreateFigure(shape, figure); combined.AddPath(part); }
+            return combined;
+        }
+        if (shape.IsGroupAnchor) return new SKPath();
         var path = new SKPath();
         var x = (float)shape.X; var y = (float)shape.Y; var w = (float)shape.Width; var h = (float)shape.Height;
         void M(float a, float b) => path.MoveTo(x + a * w, y + b * h);
@@ -72,7 +79,9 @@ public static class ShapeGeometry
     }
     public static SKPath Details(Shape shape)
     {
-        var p = new SKPath(); var b = shape.Bounds;
+        var p = new SKPath();
+        if (shape.Geometry.Count > 0 || shape.IsGroupAnchor) return p;
+        var b = shape.Bounds;
         var x = (float)b.X; var y = (float)b.Y; var w = (float)b.Width; var h = (float)b.Height;
         void Line(float ax, float ay, float bx, float by) { p.MoveTo(x + ax * w, y + ay * h); p.LineTo(x + bx * w, y + by * h); }
         switch (shape.Kind)
@@ -89,8 +98,23 @@ public static class ShapeGeometry
     }
     public static bool Contains(Shape shape, PointD world, double tolerance = 0)
     {
-        var local = world.Rotate(-shape.Rotation, shape.Bounds.Center);
+        if (shape.IsGroupAnchor && shape.Geometry.Count == 0) return false;
+        if (!shape.DrawingMatrix.TryInvert(out var inverse)) return false;
+        var local = inverse.Map(world);
         if (!shape.Bounds.Inflate(tolerance).Contains(local)) return false;
+        if (shape.Geometry.Count > 0)
+        {
+            foreach (var figure in shape.Geometry)
+            {
+                using var figurePath = CreateFigure(shape, figure);
+                if (figure.Filled && figurePath.Contains((float)local.X, (float)local.Y)) return true;
+                if (!figure.Stroked) continue;
+                using var paint = new SKPaint { Style = SKPaintStyle.Stroke, StrokeWidth = (float)Math.Max(shape.Style.StrokeWidth, tolerance * 2) };
+                using var outlinePath = new SKPath();
+                if (paint.GetFillPath(figurePath, outlinePath) && outlinePath.Contains((float)local.X, (float)local.Y)) return true;
+            }
+            return false;
+        }
         if (shape.Kind is ShapeKind.Text or ShapeKind.Annotation or ShapeKind.Container) return true;
         using var path = Create(shape);
         if (path.Contains((float)local.X, (float)local.Y)) return true;
