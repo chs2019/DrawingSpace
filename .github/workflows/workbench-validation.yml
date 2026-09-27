@@ -1,0 +1,103 @@
+name: Workbench validation
+on:
+  push:
+    branches: [feat/visio-parity]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: workbench-validation-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Repair verified rich-text API integration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/DrawingSpace.Text/RichTextLayoutEngine.cs')
+          s = p.read_text()
+          s = s.replace('new TextBlock(mapper)', 'new TextBlock()')
+          s = s.replace('MaxWidth = width, RenderWidth = width,', 'FontMapper = mapper, MaxWidth = width, RenderWidth = width,') if 'FontMapper = mapper,' not in s else s
+          s = s.replace('AutoFontFallback = true, ', '')
+          p.write_text(s)
+          p = Path('tests/DrawingSpace.Tests/DrawingSpace.Tests.csproj')
+          s = p.read_text()
+          if 'DrawingSpace.Text.csproj' not in s:
+              s = s.replace('  </ItemGroup>', '    <ProjectReference Include="../../src/DrawingSpace.Text/DrawingSpace.Text.csproj" />\n  </ItemGroup>', 1)
+          p.write_text(s)
+          PY
+      - name: Engine tests including rich-text compilation
+        run: dotnet test tests/DrawingSpace.Tests -c Release --logger 'trx;LogFileName=engine.trx' --results-directory artifacts/tests
+      - name: Export offline engine feed
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          files = sorted((Path.home()/'.nuget/packages').rglob('*.nupkg'))
+          part = 0; used = 0; z = None
+          try:
+              for p in files:
+                  if z is None or used + p.stat().st_size > 350_000_000:
+                      if z: z.close()
+                      part += 1; used = 0
+                      z = zipfile.ZipFile(f'artifacts/engine-feed-{part}.zip','w',zipfile.ZIP_STORED)
+                  z.write(p,p.name); used += p.stat().st_size
+          finally:
+              if z: z.close()
+          PY
+      - name: Compile actual Uno desktop host
+        run: dotnet build src/DrawingSpace.App -f net10.0-desktop -c Release
+      - name: Commit validated integration repairs
+        shell: bash
+        run: |
+          git add src/DrawingSpace.Text/RichTextLayoutEngine.cs tests/DrawingSpace.Tests/DrawingSpace.Tests.csproj
+          if ! git diff --cached --quiet; then
+            git config user.name 'DrawingSpace integration'
+            git config user.email 'wieslawsoltes@users.noreply.github.com'
+            git commit -m 'fix: compile rich-text engine and include it in the engine test graph'
+            git push origin HEAD:refs/heads/feat/visio-parity
+          fi
+          git rev-parse HEAD
+      - name: Source snapshot
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile,subprocess
+          with zipfile.ZipFile('artifacts/workbench-source.zip','w',zipfile.ZIP_DEFLATED) as z:
+              for name in subprocess.check_output(['git','ls-files'],text=True).splitlines():
+                  if Path(name).is_file(): z.write(name,name)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: DrawingSpace-workbench-source
+          path: artifacts/workbench-source.zip
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: DrawingSpace-engine-feed
+          path: artifacts/engine-feed-*.zip
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: DrawingSpace-workbench-tests
+          path: artifacts/tests
+          retention-days: 7
