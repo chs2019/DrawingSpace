@@ -37,36 +37,34 @@ public sealed partial class DiagramSurface
         {
             var corners = shape.WorldCorners.Select(viewport.ToScreen).ToArray();
             using var path = SceneRenderer.Polyline(corners.Append(corners[0]).ToArray()); canvas.DrawPath(path, outline);
-            if (session.Page.IsLocked(shape)) continue;
+            if (session.Page.IsLocked(shape) || session.SelectedShapes.Count != 1) continue;
             foreach (var handle in ShapeTransforms.Handles(shape))
             {
                 var p = viewport.ToScreen(handle); var box = new SKRect((float)p.X - 3.5f, (float)p.Y - 3.5f, (float)p.X + 3.5f, (float)p.Y + 3.5f);
                 canvas.DrawRect(box, white); canvas.DrawRect(box, outline);
             }
-            if (session.SelectedShapes.Count == 1)
+            var rotation = RotationHandle(shape); var top = viewport.ToScreen(ShapeTransforms.Handles(shape)[1]);
+            canvas.DrawLine((float)top.X, (float)top.Y, (float)rotation.X, (float)rotation.Y, outline);
+            canvas.DrawCircle((float)rotation.X, (float)rotation.Y, 4, white); canvas.DrawCircle((float)rotation.X, (float)rotation.Y, 4, outline);
+            if (session.AutoConnect && session.Tool == EditorTool.Pointer)
             {
-                var rotation = RotationHandle(shape); var top = viewport.ToScreen(ShapeTransforms.Handles(shape)[1]);
-                canvas.DrawLine((float)top.X, (float)top.Y, (float)rotation.X, (float)rotation.Y, outline);
-                canvas.DrawCircle((float)rotation.X, (float)rotation.Y, 4, white); canvas.DrawCircle((float)rotation.X, (float)rotation.Y, 4, outline);
-                if (session.AutoConnect && session.Tool == EditorTool.Pointer)
+                using var accent = new SKPaint { IsAntialias = true, Color = SKColor.Parse("#5B9BD5") };
+                foreach (var side in new[] { PortSide.North, PortSide.East, PortSide.South, PortSide.West })
                 {
-                    using var accent = new SKPaint { IsAntialias = true, Color = SKColor.Parse("#5B9BD5") };
-                    foreach (var side in new[] { PortSide.North, PortSide.East, PortSide.South, PortSide.West })
-                    {
-                        var p = AutoConnectPosition(shape, side); var direction = DrawingSpace.Routing.OrthogonalRouter.Direction(side).Rotate(shape.Rotation, PointD.Zero); var normal = new PointD(-direction.Y, direction.X);
-                        var tip = p + direction * 5; var a = p - direction * 4 + normal * 5; var b = p - direction * 4 - normal * 5;
-                        using var triangle = SceneRenderer.Polyline([a, tip, b, a]); canvas.DrawPath(triangle, accent);
-                    }
+                    var p = AutoConnectPosition(shape, side); var direction = DrawingSpace.Routing.OrthogonalRouter.Direction(side).Rotate(shape.Rotation, PointD.Zero); var normal = new PointD(-direction.Y, direction.X);
+                    var tip = p + direction * 5; var a = p - direction * 4 + normal * 5; var b = p - direction * 4 - normal * 5;
+                    using var triangle = SceneRenderer.Polyline([a, tip, b, a]); canvas.DrawPath(triangle, accent);
                 }
             }
         }
+        DrawSelectionAdorners(canvas);
         var routes = Renderer.Routes(page, session.Revision);
         foreach (var connector in session.SelectedConnectors)
         {
             if (!routes.TryGetValue(connector.Id, out var route)) continue;
             var points = route.Points.Select(viewport.ToScreen).ToArray();
             using var path = SceneRenderer.Polyline(points); outline.StrokeWidth = 3; outline.Color = SKColor.Parse("#AA5B9BD5"); canvas.DrawPath(path, outline); outline.StrokeWidth = 1.3f; outline.Color = SKColor.Parse("#5B9BD5");
-            if (points.Length == 0) continue;
+            if (points.Length == 0 || session.SelectedShapes.Count > 0 || page.Layers.FirstOrDefault(l => l.Id == connector.LayerId)?.Locked == true) continue;
             foreach (var p in new[] { points[0], points[^1] }) { canvas.DrawCircle((float)p.X, (float)p.Y, 4, white); canvas.DrawCircle((float)p.X, (float)p.Y, 4, outline); }
         }
         DrawConnectorAdorners(canvas);

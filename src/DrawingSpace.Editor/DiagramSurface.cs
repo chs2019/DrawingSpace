@@ -14,7 +14,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
         public Action<SKCanvas, Size>? Draw { get; set; }
         protected override void RenderOverride(SKCanvas canvas, Size area) => Draw?.Invoke(canvas, area);
     }
-    private enum Gesture { None, Move, Resize, Rotate, Marquee, Pan, Create, Connect, Pinch, ConnectorEndpoint, ConnectorWaypoint, ConnectorLabel }
+    private enum Gesture { None, Move, Resize, Rotate, Marquee, Pan, Create, Connect, Pinch, ConnectorEndpoint, ConnectorWaypoint, ConnectorLabel, ConnectorSegment, SelectionResize, SelectionRotate }
     private readonly DrawingCanvas _canvas = new();
     private readonly Canvas _overlay = new();
     private readonly Dictionary<string, Shape> _originals = [];
@@ -93,7 +93,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
         if (kind == ChangeKind.Document && Session?.IsInteracting != true)
         {
             _gesture = Gesture.None; _originals.Clear(); _originalConnectors.Clear(); _editedConnectorId = null; _marquee = null; _snap = null; _created = null; _connectSource = null;
-            ReleaseCaptures(); Renderer.ClearCache();
+            ResetAdvancedGestures(); ReleaseCaptures(); Renderer.ClearCache();
             if (_textEditor is not null) FinishTextEdit(false);
         }
         if (kind == ChangeKind.Tool) { CancelGesture(); FinishTextEdit(true); }
@@ -118,6 +118,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
     public void CancelGesture()
     {
         _gesture = Gesture.None; _originals.Clear(); _originalConnectors.Clear(); _editedConnectorId = null; _marquee = null; _snap = null; _created = null; _connectSource = null;
+        ResetAdvancedGestures();
         if (Session?.IsInteracting == true) Session.Cancel();
         ReleaseCaptures(); Invalidate();
     }
@@ -127,7 +128,16 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
         try { _canvas.ReleasePointerCaptures(); }
         finally { _releasing = false; }
     }
+    private void FailGesture(Exception error)
+    {
+        CancelGesture(); StatusChanged?.Invoke(error.Message);
+    }
     private void Pressed(object sender, PointerRoutedEventArgs e)
+    {
+        try { PressedCore(sender, e); }
+        catch (Exception error) { FailGesture(error); e.Handled = true; }
+    }
+    private void PressedCore(object sender, PointerRoutedEventArgs e)
     {
         if (Session is not { } session) return;
         var pointer = e.GetCurrentPoint(_canvas);
@@ -150,6 +160,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
         _canvas.CapturePointer(e.Pointer); e.Handled = true;
         if (IsSpaceDown || session.Tool == EditorTool.Pan || pointer.Properties.IsMiddleButtonPressed) { _gesture = Gesture.Pan; return; }
         if (session.RulersVisible && (screen.X < 22 || screen.Y < 22)) { _gesture = Gesture.None; return; }
+        if (session.Tool == EditorTool.Pointer && TryBeginSelectionTransform(screen)) return;
         if (session.Tool == EditorTool.Pointer && session.SelectedShapes.Count == 1 && !session.Page.IsLocked(session.SelectedShapes[0]))
         {
             var selected = session.SelectedShapes[0]; var handles = ShapeTransforms.Handles(selected);
@@ -207,6 +218,11 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
     }
     private void Moved(object sender, PointerRoutedEventArgs e)
     {
+        try { MovedCore(sender, e); }
+        catch (Exception error) { FailGesture(error); e.Handled = true; }
+    }
+    private void MovedCore(object sender, PointerRoutedEventArgs e)
+    {
         if (Session is not { } session) return;
         var pointer = e.GetCurrentPoint(_canvas); var screen = new PointD(pointer.Position.X, pointer.Position.Y); var world = session.Viewport.ToWorld(screen);
         _lastWorld = world; CursorChanged?.Invoke(world);
@@ -224,7 +240,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
             case Gesture.Move:
                 var raw = world - _startWorld;
                 if (screen.Distance(_startScreen) < 2) return;
-                var bypass = e.KeyModifiers.HasFlag(VirtualKeyModifiers.Menu);
+                var bypass = IsAltDown || e.KeyModifiers.HasFlag(VirtualKeyModifiers.Menu);
                 _snap = SnapService.Snap(session.Page, _originals.Keys.ToArray(), _startBounds, raw, session.Viewport.Zoom, session.SnapToGrid && !bypass, session.DynamicGuides && !bypass, session.GridSize);
                 foreach (var (id, original) in _originals)
                 {
@@ -236,10 +252,14 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
             case Gesture.ConnectorEndpoint:
             case Gesture.ConnectorWaypoint:
             case Gesture.ConnectorLabel:
-                MoveConnectorEdit(world); break;
+            case Gesture.ConnectorSegment:
+                MoveConnectorEdit(world, e.KeyModifiers); break;
+            case Gesture.SelectionResize:
+            case Gesture.SelectionRotate:
+                MoveSelectionTransform(world, e.KeyModifiers); break;
             case Gesture.Resize:
                 var entry = _originals.First();
-                if (session.Page.Find(entry.Key) is { } resized) ShapeTransforms.Resize(resized, entry.Value, _handle, _startWorld, world, e.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift));
+                if (session.Page.Find(entry.Key) is { } resized) ShapeTransforms.Resize(resized, entry.Value, _handle, _startWorld, world, IsShiftDown || e.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift));
                 session.Preview(); break;
             case Gesture.Rotate:
                 var rotate = _originals.First();
@@ -249,7 +269,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
                     var start = Math.Atan2(_startWorld.Y - center.Y, _startWorld.X - center.X);
                     var end = Math.Atan2(world.Y - center.Y, world.X - center.X);
                     var angle = rotate.Value.Rotation + (end - start) * 180 / Math.PI;
-                    rotated.Rotation = e.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift) ? Math.Round(angle / 15) * 15 : angle;
+                    rotated.Rotation = IsShiftDown || e.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift) ? Math.Round(angle / 15) * 15 : angle;
                 }
                 session.Preview(); break;
             case Gesture.Create:
@@ -267,10 +287,17 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
     }
     private void Released(object sender, PointerRoutedEventArgs e)
     {
+        try { ReleasedCore(sender, e); }
+        catch (Exception error) { FailGesture(error); e.Handled = true; }
+    }
+    private void ReleasedCore(object sender, PointerRoutedEventArgs e)
+    {
         if (Session is not { } session) return;
         var p = e.GetCurrentPoint(_canvas).Position; var screen = new PointD(p.X, p.Y); var world = session.Viewport.ToWorld(screen);
         _touches.Remove(e.Pointer.PointerId);
         if (_gesture == Gesture.Pinch) { if (_touches.Count < 2) _gesture = Gesture.None; ReleaseCaptures(); return; }
+        // Some input backends coalesce the final motion into pointer release.
+        if (world.Distance(_lastWorld) > 1e-8 && _gesture is not Gesture.None and not Gesture.Connect) MovedCore(sender, e);
         var gesture = _gesture; var createdId = _created?.Id; _gesture = Gesture.None;
         if (gesture == Gesture.Marquee && _marquee is { } box)
         {
@@ -285,9 +312,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
         {
             var target = Renderer.HitShape(session.Page, world, 8 / session.Viewport.Zoom);
             if (_connectSource is not null && target is not null)
-            {
                 session.Connect(_connectSource, target.Id, _connectPort, NearestPort(target, world));
-            }
             else if (screen.Distance(_startScreen) > 8)
             {
                 var source = _connectSource;
@@ -301,7 +326,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
         if (gesture == Gesture.Create && _created is not null && screen.Distance(_startScreen) < 5) { _created.Width = _created.Kind == ShapeKind.Text ? 160 : 144; _created.Height = _created.Kind == ShapeKind.Text ? 40 : 64; }
         if (session.IsInteracting) session.Commit();
         _originals.Clear(); _originalConnectors.Clear(); _editedConnectorId = null; _marquee = null; _snap = null; _connectSource = null; _created = null;
-        ReleaseCaptures(); Invalidate(); e.Handled = true;
+        ResetAdvancedGestures(); ReleaseCaptures(); Invalidate(); e.Handled = true;
         if (gesture == Gesture.Create && createdId is not null && session.Page.Find(createdId)?.Kind == ShapeKind.Text) BeginTextEdit(createdId);
     }
     private void Wheel(object sender, PointerRoutedEventArgs e)
