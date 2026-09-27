@@ -138,6 +138,11 @@ try {
     const midpoint = { x: (edge.route[0].x + edge.route[1].x) / 2, y: (edge.route[0].y + edge.route[1].y) / 2 };
     const hit = screen(state, midpoint); await page.mouse.click(hit.x, hit.y);
     state = await until(s => s.selection === 1 && s.connectors[0].selected, 'Connector was not selected on its own');
+    // Selection and segment dragging are two independent gestures. A second press
+    // at this location inside Uno's double-tap interval intentionally edits the label
+    // (covered by browser-test.mjs), rather than starting this drag.
+    await page.waitForTimeout(750);
+    state = await until(s => !s.editingText && s.gesture === 'None', 'Connector selection unexpectedly entered text editing');
     const a = screen(state, midpoint);
     await drag(a, { x: a.x, y: a.y + 55 }, 'ConnectorSegment');
     const changed = await until(s => s.connectors[0].waypointCount >= 2, 'Segment drag did not create two controlled bend points');

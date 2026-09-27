@@ -144,7 +144,9 @@ public sealed class SelectionTransformSnapshot
                     Math.Atan2(matrix.B, matrix.A) * 180 / Math.PI,
                     (matrix.A * matrix.C + matrix.B * matrix.D) / (width * height), false, matrix.Determinant < 0, matrix);
             }
-            if (!matrix.IsFinite || !double.IsFinite(result.ShearX)
+            // Keep preview preflight aligned with DocumentCodec.ValidateShape: reject
+            // excessive shear before any target is changed, not only at final commit.
+            if (!matrix.IsFinite || !double.IsFinite(result.ShearX) || Math.Abs(result.ShearX) > 1000
                 || result.Width < 1 - 1e-8 || result.Width > 100000 || result.Height < 1 - 1e-8 || result.Height > 100000
                 || Math.Abs(result.X) > 1000000 || Math.Abs(result.Y) > 1000000)
                 throw new InvalidOperationException("This transform would exceed the document's geometry limits.");
