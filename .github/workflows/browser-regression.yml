@@ -22,7 +22,7 @@ jobs:
           run-id: 36324860256
           github-token: ${{ github.token }}
           path: artifacts/site
-      - name: Validate the exact compiled source and test reload readiness
+      - name: Validate compiled source and browser interactions
         shell: bash
         run: |
           set -euo pipefail
@@ -34,6 +34,13 @@ jobs:
           if 'Allow the read-only geometry snapshot' not in s:
               assert needle in s
               s=s.replace(needle,needle+"\n    await page.locator('.uno-loader').waitFor({ state: 'hidden', timeout: 30000 });\n    await page.waitForTimeout(300); // Allow the read-only geometry snapshot to observe the final fitted viewport.")
+          needle="    await page.keyboard.down('Alt'); await drag(a,{x:a.x+45,y:a.y+12});"
+          assert needle in s
+          s=s.replace(needle,"    const focusPoint = screen(state,{x:edge.route[0].x*.75+edge.route[1].x*.25,y:edge.route[0].y*.75+edge.route[1].y*.25});\n    await page.mouse.click(focusPoint.x,focusPoint.y); await page.waitForTimeout(300);\n"+needle)
+          old="  await action(); results.push({ name, passed: true, milliseconds: Date.now() - started }); console.log(`PASS ${name}`);"
+          assert old in s
+          s=s.replace(old,"  try { "+old.strip()+" } catch(error) { results.push({name,passed:false,error:error.stack}); console.error(name,error.message); await page.screenshot({path:`${output}/screenshots/failure-${results.length}.png`}); }")
+          s=s.replace("  assert.deepEqual(errors, [], 'The browser reported JavaScript or WebAssembly errors');","  assert.ok(results.every(r=>r.passed), 'One or more browser scenarios failed');\n  assert.deepEqual(errors, [], 'The browser reported JavaScript or WebAssembly errors');")
           p.write_text(s)
           PY
           npm ci --ignore-scripts --no-audit --no-fund
