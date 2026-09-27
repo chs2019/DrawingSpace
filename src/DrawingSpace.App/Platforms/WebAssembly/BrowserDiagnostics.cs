@@ -27,6 +27,9 @@ internal static class BrowserDiagnostics
                 json.WriteString("tool", session.Tool.ToString()); json.WriteString("title", session.Document.Title);
                 json.WriteNumber("nodes", session.Page.Shapes.Count); json.WriteNumber("edges", session.Page.Connectors.Count);
                 json.WriteNumber("pages", session.Document.Pages.Count); json.WriteNumber("selection", session.Selection.Count);
+                var textFont = surface.Renderer.Font(new());
+                json.WriteString("fontFamily", textFont.Typeface.FamilyName);
+                json.WriteNumber("fontWidthRatio", textFont.MeasureText("WWW") / Math.Max(.01f, textFont.MeasureText("iii")));
                 json.WriteNumber("zoom", session.Viewport.Zoom); json.WriteNumber("panX", session.Viewport.Pan.X); json.WriteNumber("panY", session.Viewport.Pan.Y);
                 json.WriteNumber("canvasX", origin.X); json.WriteNumber("canvasY", origin.Y); json.WriteNumber("canvasWidth", surface.ActualWidth); json.WriteNumber("canvasHeight", surface.ActualHeight);
                 json.WriteBoolean("canUndo", session.CanUndo); json.WriteBoolean("canRedo", session.CanRedo); json.WriteBoolean("editingText", surface.IsTextEditing); json.WriteString("status", workbench.StatusText);

@@ -13,6 +13,7 @@ public sealed partial class SceneRenderer : IDisposable
     private DiagramPage? _routePage;
     private long _revision = -1;
     private SKTypeface? _fallbackTypeface;
+    private readonly Dictionary<(bool Bold, bool Italic), SKTypeface> _fallbackStyles = [];
     public void SetTypeface(SKTypeface typeface)
     {
         foreach (var entry in _fonts.Values) { entry.Font.Dispose(); entry.Typeface.Dispose(); }
@@ -38,7 +39,7 @@ public sealed partial class SceneRenderer : IDisposable
             _fonts.Clear();
         }
         var typeface = SKTypeface.FromFamilyName(style.FontFamily, style.Bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal, SKFontStyleWidth.Normal, style.Italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright);
-        var font = new SKFont(_fallbackTypeface ?? typeface, (float)style.FontSize) { Subpixel = true, Edging = SKFontEdging.Antialias };
+        var font = new SKFont(ResolveTypeface(style, typeface), (float)style.FontSize) { Subpixel = true, Edging = SKFontEdging.Antialias };
         _fonts[key] = (typeface, font);
         return font;
     }
@@ -175,6 +176,8 @@ public sealed partial class SceneRenderer : IDisposable
     public void Dispose()
     {
         foreach (var entry in _fonts.Values) { entry.Font.Dispose(); entry.Typeface.Dispose(); }
-        _fonts.Clear(); _fallbackTypeface?.Dispose(); _fallbackTypeface = null; _routes.Clear();
+        _fonts.Clear(); _fallbackTypeface?.Dispose(); _fallbackTypeface = null;
+        foreach (var typeface in _fallbackStyles.Values.Distinct()) typeface.Dispose();
+        _fallbackStyles.Clear(); _routes.Clear();
     }
 }

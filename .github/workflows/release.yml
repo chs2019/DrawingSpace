@@ -1,0 +1,86 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful main-branch Build run to release
+        required: true
+        type: string
+      tag:
+        description: Version tag matching the packages (for example v0.1.0-alpha.1)
+        required: true
+        type: string
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify exact build and version
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN: ${{ inputs.build_run_id }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$RUN" =~ ^[0-9]+$ ]]
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]
+          gh api "repos/$REPOSITORY/actions/runs/$RUN" > /tmp/build.json
+          jq -e '.conclusion == "success" and .head_branch == "main" and .event != "pull_request" and .path == ".github/workflows/build.yml"' /tmp/build.json
+          SHA=$(jq -r .head_sha /tmp/build.json)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: DrawingSpace-packages
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+          path: release/packages
+      - uses: actions/download-artifact@v4
+        with:
+          name: DrawingSpace-browser
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+          path: release/browser
+      - name: Verify package metadata and assemble archives
+        env:
+          VERSION: ${{ steps.source.outputs.version }}
+          EXPECTED_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, zipfile, xml.etree.ElementTree as ET
+          packages = list(pathlib.Path('release/packages').glob('*.nupkg'))
+          assert len(packages) == 9, f'Expected nine packages, found {len(packages)}'
+          for package in packages:
+              with zipfile.ZipFile(package) as z:
+                  spec = next(name for name in z.namelist() if name.endswith('.nuspec'))
+                  root = ET.fromstring(z.read(spec))
+                  version = next(e.text for e in root.iter() if e.tag.rsplit('}', 1)[-1] == 'version')
+                  assert version == os.environ['VERSION'], (package, version)
+          PY
+          jq -e --arg sha "$EXPECTED_SHA" '.commit == $sha' release/browser/build-info.json
+          git archive --format=zip --output=release/DrawingSpace-source.zip HEAD
+          (cd release/browser && zip -qr ../DrawingSpace-browser.zip .)
+          (cd release && sha256sum DrawingSpace-*.zip packages/*.nupkg packages/*.snupkg > SHA256SUMS)
+      - name: Publish release without replacing an existing tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then echo 'Release already exists; refusing to replace assets.' >&2; exit 1; fi
+          FLAGS=()
+          if [[ "$TAG" == *-* ]]; then FLAGS+=(--prerelease); fi
+          gh release create "$TAG" --target "$SHA" --title "DrawingSpace $TAG" --notes-file CHANGELOG.md "${FLAGS[@]}" release/DrawingSpace-*.zip release/SHA256SUMS release/packages/*.nupkg release/packages/*.snupkg

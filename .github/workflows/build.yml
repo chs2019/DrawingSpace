@@ -43,10 +43,11 @@ jobs:
           python3 scripts/collect-site.py artifacts/publish artifacts/site
       - name: Test browser interaction
         run: |
-          npm install --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
           npx playwright install --with-deps chromium
           python3 scripts/serve-site.py --directory artifacts/site --port 4173 > artifacts/server.log 2>&1 &
           npm run test:browser
+          python3 scripts/publish-preview.py
       - name: Build reusable NuGet packages
         run: |
           for project in src/*/*.csproj; do
@@ -73,9 +74,9 @@ jobs:
           path: |
             artifacts/screenshots
             artifacts/browser-results.json
+            artifacts/browser-snapshot.json
             artifacts/browser-console.log
             artifacts/server.log
-            package-lock.json
           if-no-files-found: ignore
       - name: Source archive
         if: always()

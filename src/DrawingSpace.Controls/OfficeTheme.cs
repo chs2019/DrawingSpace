@@ -8,7 +8,7 @@ public static class OfficeTheme
     public const string TextColor = "#242424";
     public const string Secondary = "#666666";
     public const string Separator = "#DADADA";
-    public static FontFamily Font { get; set; } = new("Arial");
+    public static FontFamily Font { get; set; } = new("ms-appx:///Uno.Fonts.OpenSans/Fonts/OpenSans.ttf");
     public static SolidColorBrush Brush(string color)
     {
         var c = SKColor.Parse(color);

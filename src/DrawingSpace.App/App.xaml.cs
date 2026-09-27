@@ -33,7 +33,9 @@ public partial class App : Application
             }
             catch (Exception ex) { warning = "The local recovery copy could not be opened: " + ex.Message; }
             var session = new EditorSession(document);
-            _workbench = new DiagramWorkbench(session, storage); _window.Content = _workbench;
+            _workbench = new DiagramWorkbench(session, storage);
+            await ApplicationFonts.ConfigureAsync(_workbench.Surface.Renderer);
+            _window.Content = _workbench;
             _window.Closed += (_, _) => _workbench.Dispose();
             _window.Activated += (_, e) => { if (e.WindowActivationState == Windows.UI.Core.CoreWindowActivationState.Deactivated) _workbench.Surface.IsSpaceDown = false; };
             if (warning is not null) _workbench.ShowStatus(warning, true);

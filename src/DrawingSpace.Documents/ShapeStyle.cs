@@ -7,7 +7,7 @@ public sealed class ShapeStyle
     public string TextColor { get; set; } = "#253858";
     public double StrokeWidth { get; set; } = 1.5;
     public double FontSize { get; set; } = 14;
-    public string FontFamily { get; set; } = "Arial";
+    public string FontFamily { get; set; } = "Open Sans";
     public bool Bold { get; set; }
     public bool Italic { get; set; }
     public bool Dashed { get; set; }

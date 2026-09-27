@@ -1,0 +1,34 @@
+name: Bug report
+description: Report a reproducible DrawingSpace issue
+title: '[Bug] '
+body:
+  - type: input
+    id: build
+    attributes:
+      label: Commit or build-info.json
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and browser / native host
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include a minimal non-sensitive drawing when possible.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or logs
+      description: Remove personal data and credentials before uploading.

@@ -40,9 +40,12 @@ async function check(name, action) {
 try {
   await page.goto(base + (base.includes('?') ? '&' : '?') + 'test=1', { waitUntil: 'domcontentloaded', timeout: 120000 });
   await until(s => s.ready && s.nodes === 13 && s.canvasWidth > 500, 'Uno application did not become ready', 120000);
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(3000);
+  await page.locator('.uno-loader').waitFor({ state: 'hidden', timeout: 30000 });
   await check('Real Uno/Skia workspace starts with connected editable sample', async () => {
     const state = await snapshot(); assert.equal(state.edges, 10); assert.equal(state.pages, 1);
+    assert.ok(state.fontFamily.includes('Open Sans'), `Unexpected font: ${state.fontFamily}`);
+    assert.ok(state.fontWidthRatio > 2, 'The diagram renderer fell back to a monospaced font');
     assert.ok(await page.locator('canvas').count() > 0); assert.deepEqual(errors, []);
     await page.screenshot({ path: `${output}/screenshots/DrawingSpace-workspace.png` });
   });
@@ -52,7 +55,7 @@ try {
     await page.keyboard.press('Control+y'); await until(s => s.nodes === 14, 'Redo did not restore insertion');
   });
   await check('Pointer drag moves geometry and Undo restores exact coordinates', async () => {
-    let state = await snapshot(); const shape = state.shapes.find(s => s.selected); assert.ok(shape); const original = { x: shape.x, y: shape.y };
+    const state = await snapshot(); const shape = state.shapes.find(s => s.selected); assert.ok(shape); const original = { x: shape.x, y: shape.y };
     const point = center(state, shape); await page.mouse.move(point.x, point.y); await page.mouse.down(); await page.mouse.move(point.x + 54, point.y + 31, { steps: 9 }); await page.mouse.up();
     await until(s => s.shapes.some(n => n.id === shape.id && (n.x !== original.x || n.y !== original.y)), 'Shape drag did not change geometry');
     await page.keyboard.press('Control+z'); await until(s => s.shapes.some(n => n.id === shape.id && n.x === original.x && n.y === original.y), 'Undo did not restore geometry');
@@ -84,7 +87,16 @@ try {
   await check('SVG export downloads real paths and edited labels', async () => {
     await click('File'); const downloadPromise = page.waitForEvent('download'); await click('SVG'); const download = await downloadPromise;
     assert.ok(download.suggestedFilename().endsWith('.svg')); const file = await download.path(); const text = await fs.readFile(file, 'utf8');
-    assert.match(text, /<svg/); assert.match(text, /<path/); assert.match(text, /Ready for review/);
+    assert.match(text, /<svg/); assert.match(text, /<path/);
+    const labels = await page.evaluate(svg => {
+      const document = new DOMParser().parseFromString(svg, 'image/svg+xml');
+      if (document.querySelector('parsererror')) throw new Error('SVG is not well-formed XML');
+      return [...document.querySelectorAll('text')].map(node => {
+        const spans = [...node.querySelectorAll('tspan')];
+        return spans.length ? spans.map(span => span.textContent).join(' ') : node.textContent;
+      });
+    }, text);
+    assert.ok(labels.includes('Ready for review'), 'The exported SVG lost the edited label');
   });
   await check('Local recovery survives browser reload', async () => {
     await until(s => s.status.includes('Exported') || s.status.includes('saved'), 'No completed operation status');
