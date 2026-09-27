@@ -1,0 +1,68 @@
+using DrawingSpace.Core;
+using DrawingSpace.Documents;
+
+namespace DrawingSpace.Editing;
+
+public static class MasterService
+{
+    private sealed record Property(string Name, Func<Shape, object?> Get, Action<Shape, Shape> Copy);
+    private static readonly Property[] Properties =
+    [
+        new("Kind", s => s.Kind, (a,b) => a.Kind = b.Kind), new("Text", s => s.Text, (a,b) => { a.Text = b.Text; a.TextSpans = b.TextSpans.Select(t => t.Clone()).ToList(); a.Paragraphs = b.Paragraphs.Select(p => p.Clone()).ToList(); }),
+        new("Width", s => s.Width, (a,b) => a.Width = b.Width), new("Height", s => s.Height, (a,b) => a.Height = b.Height),
+        new("Style.Fill", s => s.Style.Fill, (a,b) => a.Style.Fill = b.Style.Fill), new("Style.Stroke", s => s.Style.Stroke, (a,b) => a.Style.Stroke = b.Style.Stroke),
+        new("Style.StrokeWidth", s => s.Style.StrokeWidth, (a,b) => a.Style.StrokeWidth = b.Style.StrokeWidth), new("Style.TextColor", s => s.Style.TextColor, (a,b) => a.Style.TextColor = b.Style.TextColor),
+        new("Style.FontFamily", s => s.Style.FontFamily, (a,b) => a.Style.FontFamily = b.Style.FontFamily), new("Style.FontSize", s => s.Style.FontSize, (a,b) => a.Style.FontSize = b.Style.FontSize),
+        new("Style.Bold", s => s.Style.Bold, (a,b) => a.Style.Bold = b.Style.Bold), new("Style.Italic", s => s.Style.Italic, (a,b) => a.Style.Italic = b.Style.Italic),
+        new("Style.Opacity", s => s.Style.Opacity, (a,b) => a.Style.Opacity = b.Style.Opacity), new("Style.Dashed", s => s.Style.Dashed, (a,b) => a.Style.Dashed = b.Style.Dashed)
+    ];
+    public static IReadOnlyList<string> InheritableProperties => Properties.Select(p => p.Name).Append("Geometry").Append("ConnectionPoints").ToArray();
+    public static Shape? Template(DiagramDocument document, Shape instance)
+    {
+        var master = document.Masters.FirstOrDefault(m => m.Id == instance.MasterId);
+        if (master is null) return null;
+        return instance.MasterShapeId is null || instance.MasterShapeId == master.Shape.Id ? master.Shape : master.Children.FirstOrDefault(s => s.Id == instance.MasterShapeId);
+    }
+    public static void CaptureLocalOverrides(DiagramDocument before, DiagramDocument current)
+    {
+        var previous = before.Pages.SelectMany(p => p.Shapes).ToDictionary(s => s.Id);
+        foreach (var instance in current.Pages.SelectMany(p => p.Shapes).Where(s => s.MasterId is not null))
+        {
+            if (!previous.TryGetValue(instance.Id, out var old) || old.MasterId != instance.MasterId) continue;
+            foreach (var property in Properties)
+                if (!Equals(property.Get(old), property.Get(instance)) && !instance.LocalOverrides.Contains(property.Name, StringComparer.OrdinalIgnoreCase)) instance.LocalOverrides.Add(property.Name);
+        }
+    }
+    public static void Refresh(DiagramDocument document)
+    {
+        foreach (var instance in document.Pages.SelectMany(p => p.Shapes))
+        {
+            var template = Template(document, instance); if (template is null) continue;
+            var center = instance.Bounds.Center;
+            foreach (var property in Properties)
+                if (!instance.LocalOverrides.Contains(property.Name, StringComparer.OrdinalIgnoreCase)) property.Copy(instance, template);
+            instance.X = center.X - instance.Width / 2; instance.Y = center.Y - instance.Height / 2;
+            if (!instance.LocalOverrides.Contains("Geometry", StringComparer.OrdinalIgnoreCase)) instance.Geometry = template.Geometry.Select(g => g.Clone()).ToList();
+            if (!instance.LocalOverrides.Contains("ConnectionPoints", StringComparer.OrdinalIgnoreCase)) instance.ConnectionPoints = template.ConnectionPoints.Select(p => p.Clone()).ToList();
+        }
+    }
+    public static DiagramMaster Create(Shape source, string name)
+    {
+        var template = source.Clone(true); template.X = 0; template.Y = 0; template.GroupId = null; template.ContainerId = null;
+        template.MasterId = null; template.MasterShapeId = null; template.LocalOverrides.Clear(); template.Threads.Clear(); template.Comments.Clear();
+        return new() { Name = name, Shape = template };
+    }
+    public static IReadOnlyList<Shape> Instantiate(DiagramMaster master, PointD position)
+    {
+        var templates = master.Children.Prepend(master.Shape).ToArray();
+        var map = templates.ToDictionary(s => s.Id, _ => Guid.NewGuid().ToString("N"));
+        var delta = position - new PointD(master.Shape.X, master.Shape.Y);
+        return templates.Select(template =>
+        {
+            var shape = template.Clone(true); shape.Id = map[template.Id]; shape.X += delta.X; shape.Y += delta.Y;
+            shape.MasterId = master.Id; shape.MasterShapeId = template.Id; shape.LocalOverrides.Clear(); shape.GroupId = null;
+            shape.ContainerId = template.ContainerId is not null && map.TryGetValue(template.ContainerId, out var parent) ? parent : null;
+            shape.Cells.Clear(); shape.Threads.Clear(); shape.Comments.Clear(); return shape;
+        }).ToArray();
+    }
+}

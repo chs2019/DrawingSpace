@@ -8,7 +8,6 @@ public readonly record struct MatrixD(double A, double B, double C, double D, do
     public bool IsFinite => double.IsFinite(A) && double.IsFinite(B) && double.IsFinite(C) && double.IsFinite(D) && double.IsFinite(Tx) && double.IsFinite(Ty);
     public PointD Map(PointD p) => new(A * p.X + C * p.Y + Tx, B * p.X + D * p.Y + Ty);
     public PointD MapVector(PointD p) => new(A * p.X + C * p.Y, B * p.X + D * p.Y);
-    public RectD Map(RectD r) => RectD.Bounds(r.Corners.Select(Map));
     public static MatrixD Translation(double x, double y) => new(1, 0, 0, 1, x, y);
     public static MatrixD Scale(double x, double y) => new(x, 0, 0, y, 0, 0);
     public static MatrixD Rotation(double degrees)
@@ -28,4 +27,9 @@ public readonly record struct MatrixD(double A, double B, double C, double D, do
         result = new(D / det, -B / det, -C / det, A / det, (C * Ty - D * Tx) / det, (B * Tx - A * Ty) / det);
         return result.IsFinite;
     }
+}
+
+public static class MatrixBoundsExtensions
+{
+    public static RectD Map(this MatrixD matrix, RectD bounds) => RectD.Bounds(bounds.Corners.Select(matrix.Map));
 }

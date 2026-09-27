@@ -1,0 +1,57 @@
+name: Offline validation kit
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/visio-parity]
+    paths: [.github/workflows/offline-validation-kit.yml]
+permissions:
+  contents: read
+jobs:
+  kit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Restore application and engine dependencies
+        run: |
+          dotnet restore tests/DrawingSpace.Tests
+          dotnet restore src/DrawingSpace.App
+          mkdir -p /tmp/shaping-restore
+          printf '%s\n' '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include="SkiaSharp.HarfBuzz" Version="3.119.2"/><PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" Version="8.3.1.3"/><PackageReference Include="HarfBuzzSharp.NativeAssets.WebAssembly" Version="8.3.1.3"/></ItemGroup></Project>' > /tmp/shaping-restore/shaping.csproj
+          dotnet restore /tmp/shaping-restore/shaping.csproj
+      - name: Package reproducible Linux SDK and dependency cache
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/validation-kit/dotnet/shared/Microsoft.NETCore.App /tmp/validation-kit/dotnet/shared/Microsoft.AspNetCore.App /tmp/validation-kit/dotnet/sdk /tmp/validation-kit/dotnet/host /tmp/validation-kit/dotnet/packs
+          cp "$DOTNET_ROOT/dotnet" /tmp/validation-kit/dotnet/
+          cp -a "$DOTNET_ROOT/sdk/$(dotnet --version)" /tmp/validation-kit/dotnet/sdk/
+          cp -a "$DOTNET_ROOT/host/fxr" /tmp/validation-kit/dotnet/host/
+          for directory in "$DOTNET_ROOT/shared/Microsoft.NETCore.App/10."*; do cp -a "$directory" /tmp/validation-kit/dotnet/shared/Microsoft.NETCore.App/; done
+          for directory in "$DOTNET_ROOT/shared/Microsoft.AspNetCore.App/10."*; do cp -a "$directory" /tmp/validation-kit/dotnet/shared/Microsoft.AspNetCore.App/; done
+          for name in Microsoft.NETCore.App.Ref Microsoft.AspNetCore.App.Ref Microsoft.NETCore.App.Host.linux-x64 NETStandard.Library.Ref; do
+            [ ! -d "$DOTNET_ROOT/packs/$name" ] || cp -a "$DOTNET_ROOT/packs/$name" /tmp/validation-kit/dotnet/packs/
+          done
+          tar -czf /tmp/DrawingSpace-validation-sdk.tar.gz -C /tmp/validation-kit dotnet
+          tar -czf /tmp/DrawingSpace-validation-packages.tar.gz -C "$HOME/.nuget" packages
+          git archive --format=zip --output=/tmp/DrawingSpace-validation-source.zip HEAD
+          du -h /tmp/DrawingSpace-validation-*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DrawingSpace-validation-sdk
+          path: /tmp/DrawingSpace-validation-sdk.tar.gz
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DrawingSpace-validation-packages
+          path: /tmp/DrawingSpace-validation-packages.tar.gz
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DrawingSpace-validation-source
+          path: /tmp/DrawingSpace-validation-source.zip
+          retention-days: 1
