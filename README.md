@@ -7,7 +7,7 @@
 [![Pages](https://github.com/wieslawsoltes/DrawingSpace/actions/workflows/pages.yml/badge.svg)](https://github.com/wieslawsoltes/DrawingSpace/actions/workflows/pages.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[**Open DrawingSpace**](https://wieslawsoltes.github.io/DrawingSpace/) · [Architecture](docs/architecture.md) · [Compatibility](docs/compatibility.md) · [Keyboard shortcuts](docs/keyboard.md) · [Build artifacts](https://github.com/wieslawsoltes/DrawingSpace/actions/workflows/build.yml)
+[**Open DrawingSpace**](https://wieslawsoltes.github.io/DrawingSpace/) · [Architecture](docs/architecture.md) · [Compatibility](docs/compatibility.md) · [Advanced editing](docs/advanced-editing.md) · [Keyboard shortcuts](docs/keyboard.md) · [Build artifacts](https://github.com/wieslawsoltes/DrawingSpace/actions/workflows/build.yml)
 
 DrawingSpace combines a Visio-style ribbon, searchable stencil pane, page tabs, rulers, and task panes with a real C# diagram editor. The browser application is **Uno WebAssembly with Skia rendering**, not a JavaScript mock-up or a screenshot of a desktop application. Native hosts use the same editing engine and controls.
 
@@ -21,8 +21,8 @@ The screenshot shows the published main-branch application. Feature-branch accep
 
 ## What works
 
-- **Direct editing:** stencil drag-and-drop and click insertion, marquee and multi-selection, movement, eight resize handles, rotation, inline shape and connector labels, snap-to-grid, dynamic alignment guides, undo/redo, clipboard, duplication, alignment, distribution, grouping, and stacking order.
-- **Connected diagrams:** identity-based glued endpoints, straight and obstacle-aware orthogonal connectors, endpoint arrowheads, labels, AutoConnect shape insertion, and a deterministic automatic layout for directed graphs with a cycle fallback.
+- **Direct editing:** stencil drag-and-drop and click insertion, marquee and multi-selection, movement, single-shape and shared selection resize/rotation handles, affine group transforms, inline shape and connector labels, snap-to-grid, dynamic alignment guides, undo/redo, clipboard, duplication, alignment, distribution, grouping, and stacking order.
+- **Connected diagrams:** identity-based glued endpoints, straight and obstacle-aware orthogonal connectors, endpoint arrowheads, labels, AutoConnect shape insertion, editable routing segments and waypoints, and a deterministic automatic layout for directed graphs with a cycle fallback.
 - **Document structure:** multiple named pages, page sizes and orientation, editable layers with independent visibility/locking/export inclusion, shape data, local comments, and basic diagram validation.
 - **Reusable visual components:** custom command buttons, ribbon tabs/groups, vector icons, searchable stencil gallery, color palette, page strip, and a Skia drawing surface. Text entry, scrolling, sliders, combo boxes, and modal dialogs deliberately retain Uno platform primitives.
 - **Original content:** 43 shape masters in five stencils—flowchart, basic shapes, network, organization, and containers/callouts—with editable purchase-approval, organization-chart, and network samples.
@@ -34,7 +34,9 @@ The **Developer** ribbon opens ShapeSheet, Masters, Containers, Rich Text, Conne
 
 The **File** ribbon opens native JSON, VSDX, VSTX and VDX files. Opening VSSX merges a master library into the current drawing rather than replacing it. Visio export has explicit VSDX/VSSX/VSTX commands. Unsupported constructs remain visible in compatibility diagnostics; the reader never executes embedded code or fetches external relationships.
 
-Connectors expose endpoint circles, waypoint squares and label diamonds. Drag an endpoint to glue or detach it; drag a hollow midpoint grip or Alt-drag a segment to insert a waypoint; Shift-click a waypoint to remove it. Moving a semantic container moves its members and internal connector waypoints together.
+Select two or more shapes to use the shared eight-handle selection frame and rotation grip. Corners preserve proportions; Shift constrains side handles and snaps rotation. A fixed geometry snapshot preserves affine geometry and transforms descendants/internal connectors once per preview. Escape cancels the edit and clears selection; release creates one undoable operation.
+
+Connectors expose endpoint circles, waypoint squares, rectangular orthogonal-segment grips and label diamonds. Drag an endpoint to glue or detach it. Drag an orthogonal segment to move it perpendicular to its direction, adding doglegs when needed without detaching its ends. Alt-drag inserts an individual waypoint; Shift-click removes one. Straight/nonorthogonal polylines retain circular midpoint insertion grips. Moving a semantic container moves its members and internal connector waypoints together. See [advanced editing](docs/advanced-editing.md) for input details and reusable APIs.
 
 ## Run from source
 
@@ -79,7 +81,7 @@ In another terminal:
 npm run test:browser
 ```
 
-The browser suite drives actual pointer and keyboard input. Its opt-in `?test=1` diagnostics expose **read-only** geometry and control bounds; they do not inject edits or replace input handling. Tests cover startup and proportional fonts, stencil insertion, undo/redo, dragging, label editing, duplication, page operations, zoom, task panes, SVG download, recovery across a reload, formula editing, rich text ranges, masters, semantic containers, connector handles, and real VSDX/VSSX file pickers. Screenshots, console logs, and reports are uploaded by CI. Engine tests cover geometry, transforms, persistence, routing, transactions, validation, and Skia exports.
+The browser suites drive actual pointer and keyboard input. Their opt-in `?test=1` diagnostics expose **read-only** geometry and control bounds; they do not inject edits or replace input handling. Tests cover startup and proportional fonts, stencil insertion, undo/redo, dragging, label editing, duplication, page operations, zoom, task panes, SVG download, recovery across a reload, formula editing, rich text ranges, masters, semantic containers, connector handles, real VSDX/VSSX file pickers, shared selection resize/rotation, aspect preservation, Escape rollback and orthogonal segment dragging. Run only the advanced gesture suite with `npm run test:browser:advanced`. Screenshots, console logs, and reports are uploaded by CI. Engine tests cover geometry, transforms, persistence, routing, transactions, validation, and Skia exports.
 
 ## Twelve reusable packages
 
@@ -91,7 +93,7 @@ The browser suite drives actual pointer and keyboard input. Its opt-in `?test=1`
 | `DrawingSpace.Visio` | OPC package reader/writer, VDX reader, format detection | Documents, ShapeSheet, Editing |
 | `DrawingSpace.Text` | HarfBuzz shaping, Unicode bidi/line breaking, paragraphs, range layout | Documents, SkiaSharp, HarfBuzzSharp |
 | `DrawingSpace.Routing` | Orthogonal routing, custom endpoints, line jumps and route metrics | Documents |
-| `DrawingSpace.Editing` | Transactions, selection, commands, snapping, validation | Routing |
+| `DrawingSpace.Editing` | Transactions, selection, commands, snapping, validation, affine selection snapshots | Routing |
 | `DrawingSpace.Stencils` | Shape masters and original sample diagrams | Documents |
 | `DrawingSpace.Skia` | Affine paths, shaped text, image cache, rendering, hit tests, exports | Routing, Text, SkiaSharp |
 | `DrawingSpace.Controls` | Custom Uno ribbon, buttons, gallery, palette, page strip | Stencils, Skia, Uno |
@@ -149,7 +151,7 @@ The model uses 96 drawing pixels per inch. JSON import validates version, identi
 
 ## Delivery workflows
 
-**Build** runs engine tests, publishes the real Uno browser app, exercises it with Playwright, and builds all reusable NuGet packages. **Desktop** compiles native hosts on Windows, Linux, and macOS. **Pages** deploys only a successful main-branch Build artifact, verifies its source SHA, and runs the acceptance suite again against the public URL. **Release** publishes an exact validated Build's source, browser bundle, and packages as a GitHub prerelease or release. **Publish NuGet** is a separate opt-in workflow requiring `NUGET_API_KEY`.
+**Build** runs engine tests, publishes the real Uno browser app, exercises it with Playwright, and builds all reusable NuGet packages. **Desktop** compiles native hosts on Windows, Linux, and macOS. **Pages** deploys only a successful main-branch Build artifact, verifies its source SHA, and runs the acceptance suites again against the public URL. **Release** publishes an exact validated Build's source, browser bundle, and packages as a GitHub prerelease or release. **Publish NuGet** is a separate opt-in workflow requiring `NUGET_API_KEY`.
 
 `build-info.json` on the deployed site records the exact source commit. Compilation is not a claim that every native file picker, GPU, touch device, accessibility stack, or international script has been manually validated.
 

@@ -18,6 +18,12 @@ Create master from shape captures one selected shape. Choose a document master a
 
 Full multi-shape master authoring, nested-master inheritance and every Visio master update rule remain outside this increment.
 
+## Selection resizing and rotation
+
+Select at least two shapes or a group. Eight shared resize handles and a shared rotation handle manipulate the selection together. Corner handles preserve proportions by default; side handles change one dimension unless Shift is held. Shift also snaps rotation to 15-degree increments. Imported group anchors provide an oriented affine frame where available. Transitive container/formula-frame descendants and internal connectors participate in the same transform, without repeatedly copying image, geometry or rich-text resources.
+
+Each gesture uses a fixed geometry snapshot, so successive previews do not accumulate drift. Pointer release commits one undoable change. Escape rolls back the gesture and clears selection; select the objects again before starting another selection operation. Locked descendants reject the operation rather than moving an unlocked subset. See [advanced editing](advanced-editing.md) for the reusable API and remaining constraint/group boundaries.
+
 ## Containers and swimlanes
 
 Select shapes, open Developer → Containers, and choose Container around selection. Moving the container moves its transitive members once. Use Fit to contents, Add swimlane and the horizontal/vertical layout commands for lane organization. Membership can be reassigned or removed. Membership locks and cycle validation are enforced. Arbitrary rotated/sheared container layout is not equivalent to Visio cross-functional flowchart semantics.
@@ -30,9 +36,11 @@ SVG shape text is exported as outlines with accessible labels, not as editable t
 
 ## Connector manipulation
 
-Select a connector. Drag either endpoint circle onto a shape/cardinal port/custom connection point, or to empty canvas to detach it. Custom ports respect their incoming/outgoing flags. Alt-drag a segment to insert a waypoint, drag a square to move it, and Shift-click a square to remove it. Drag a label diamond to offset its label. Developer → Connections changes jump style/size and label position, or clears explicit waypoints.
+Select one connector without selecting shapes. Drag either endpoint circle onto a shape/cardinal port/custom connection point, or to empty canvas to detach it. Custom ports respect their incoming/outgoing flags. Drag a square waypoint to move it and Shift-click a square to remove it. Drag the label diamond to offset its label. Developer → Connections changes jump style/size and label position, or clears explicit waypoints.
 
-Crossing ownership follows drawing order. Arc, gap and square bridges do not appear at shared endpoints or collinear overlaps. Crossing work has an explicit comparison budget; routing still reports obstacle fallbacks rather than guaranteeing congested-diagram routing parity.
+Drag an orthogonal segment or its rectangular midpoint grip to move the segment perpendicular to its direction. Interior vertices move together; endpoint segments create doglegs while retaining their glued endpoints and exit directions. Grid snapping applies to the segment's coordinate. Hold Alt before pointer press to insert a single waypoint instead; Alt during an active segment drag bypasses snapping. Straight/nonorthogonal connectors retain circular midpoint insertion grips. Segment edits support one-step undo and Escape rollback.
+
+Crossing ownership follows drawing order. Arc, gap and square bridges do not appear at shared endpoints or collinear overlaps. Crossing work has an explicit comparison budget; routing still reports obstacle fallbacks rather than guaranteeing congested-diagram routing parity. Segment manipulation supplies waypoints to this router; it does not implement connector junction topology.
 
 ## Local discussions
 
@@ -42,4 +50,4 @@ Review → New comment starts a local discussion on a shape. Reply to discussion
 
 `DiagramSurface` remains usable without `DiagramWorkbench`. `EditorSession`, `MasterService`, `DrawingFileCodec`, `VisioReader/Writer`, `ConnectionEndpoints`, `LineJumpService` and `RichTextLayoutEngine` are usable without Uno UI. Storage hosts can retain `IWorkspaceStorage` or additionally implement `IBinaryWorkspaceStorage`. Borrowed rich-text layouts belong to their engine cache and must not be retained past cache eviction or clear/disposal.
 
-Selected connectors expose hollow midpoint grips for inserting waypoints by pointer, pen, or touch. Existing waypoint squares remain draggable; Shift-click removes one. Alt-dragging a segment is the keyboard alternative.
+`SelectionTransformSnapshot` and `ConnectorSegmentEditor` are reusable independently of the canvas. See [selection transforms and connector editing](advanced-editing.md) for transaction ownership, geometry limits, input semantics and validation coverage.

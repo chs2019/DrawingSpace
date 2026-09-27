@@ -30,6 +30,14 @@ async function click(name) {
   await page.mouse.click(item.x + item.width / 2, item.y + item.height / 2);
   await page.waitForTimeout(220);
 }
+async function selectAllObjects() {
+  // Escape intentionally clears the selection after cancelling a gesture. Establish
+  // this precondition through the actual command instead of relying on previous tests.
+  await click('Select All');
+  return until(s => s.nodes === 2 && s.edges === 1 && s.selection === 3
+    && s.shapes.every(n => n.selected) && s.connectors[0].selected,
+  'Select All did not establish the complete selection');
+}
 const screen = (s, p) => ({ x: s.canvasX + s.panX + p.x * s.zoom, y: s.canvasY + s.panY + p.y * s.zoom });
 const center = shape => ({ x: shape.x + shape.width / 2, y: shape.y + shape.height / 2 });
 function bounds(shapes) {
@@ -77,9 +85,9 @@ try {
     await until(s => s.shapes.every(n => n.selected) && s.connectors[0].selected, 'Select-all did not include both shapes and their edge');
   });
 
-  let original = (await snapshot()).shapes.map(s => ({ ...s }));
+  const original = (await snapshot()).shapes.map(s => ({ ...s }));
   await check('Shared side grip resizes both shapes and retains glued endpoints', async () => {
-    const state = await snapshot(), box = bounds(state.shapes);
+    const state = await selectAllObjects(), box = bounds(state.shapes);
     const a = screen(state, { x: box.right, y: box.y });
     await drag(a, { x: a.x + 70, y: a.y }, 'SelectionResize');
     const changed = await until(s => s.shapes.every(n => n.width > original.find(o => o.id === n.id).width + 5), 'Shared resize did not affect every selected shape');
@@ -95,7 +103,7 @@ try {
     await click('Undo'); await until(s => equalGeometry(s, original), 'Resize undo did not restore all geometry');
   });
   await check('Shared rotation grip rotates the selection as a unit and supports undo', async () => {
-    const state = await snapshot(), box = bounds(state.shapes), pivot = screen(state, box);
+    const state = await selectAllObjects(), box = bounds(state.shapes), pivot = screen(state, box);
     const top = screen(state, { x: box.x, y: box.top }), a = { x: top.x, y: top.y - 25 };
     const radians = Math.PI / 6, dx = a.x - pivot.x, dy = a.y - pivot.y;
     const b = { x: pivot.x + dx * Math.cos(radians) - dy * Math.sin(radians), y: pivot.y + dx * Math.sin(radians) + dy * Math.cos(radians) };
@@ -104,18 +112,18 @@ try {
     await page.screenshot({ path: 'artifacts/screenshots/DrawingSpace-selection-rotation.png' });
     await click('Undo'); await until(s => equalGeometry(s, original), 'Rotation undo did not restore all shapes');
   });
-  await check('Escape rolls back an in-progress selection resize', async () => {
-    const state = await snapshot(), box = bounds(state.shapes);
+  await check('Escape rolls back an in-progress selection resize and clears selection', async () => {
+    const state = await selectAllObjects(), box = bounds(state.shapes);
     const a = screen(state, { x: box.right, y: box.y });
     await page.mouse.move(a.x, a.y); await page.mouse.down();
     await until(s => s.gesture === 'SelectionResize', 'Selection resize did not begin');
     await page.mouse.move(a.x + 40, a.y, { steps: 5 });
     await until(s => !equalGeometry(s, original), 'Interactive geometry preview was not applied');
     await page.keyboard.press('Escape'); await page.mouse.up();
-    await until(s => s.gesture === 'None' && equalGeometry(s, original), 'Escape failed to restore the pre-gesture document');
+    await until(s => s.gesture === 'None' && s.selection === 0 && equalGeometry(s, original), 'Escape failed to restore the document and clear selection');
   });
   await check('Corner grip preserves the whole-selection aspect ratio by default', async () => {
-    const state = await snapshot(), box = bounds(state.shapes);
+    const state = await selectAllObjects(), box = bounds(state.shapes);
     const a = screen(state, { x: box.right, y: box.bottom });
     await drag(a, { x: a.x + 44, y: a.y + 9 }, 'SelectionResize');
     const changed = await until(s => s.shapes[0].width > original[0].width + 1, 'Corner resize did not change geometry');
