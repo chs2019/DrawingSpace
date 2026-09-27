@@ -5,43 +5,45 @@ namespace DrawingSpace.Editing;
 
 public static class ShapeTransforms
 {
-    // Clockwise: northwest, north, northeast, east, southeast, south, southwest, west.
-    public static PointD[] Handles(Shape shape)
-    {
-        var b = shape.Bounds;
-        return new[] { new PointD(b.Left, b.Top), new(b.Center.X, b.Top), new(b.Right, b.Top), new(b.Right, b.Center.Y), new(b.Right, b.Bottom), new(b.Center.X, b.Bottom), new(b.Left, b.Bottom), new(b.Left, b.Center.Y) }
-            .Select(p => p.Rotate(shape.Rotation, b.Center)).ToArray();
-    }
+    private static readonly PointD[] UnitHandles = [new(0, 0), new(.5, 0), new(1, 0), new(1, .5), new(1, 1), new(.5, 1), new(0, 1), new(0, .5)];
+    public static PointD[] Handles(Shape shape) => UnitHandles.Select(shape.WorldMatrix.Map).ToArray();
+
     public static void Resize(Shape shape, Shape original, int handle, PointD start, PointD current, bool preserveAspect)
     {
         if (handle is < 0 or > 7) throw new ArgumentOutOfRangeException(nameof(handle));
-        var b = original.Bounds;
-        var delta = current.Rotate(-original.Rotation, b.Center) - start.Rotate(-original.Rotation, b.Center);
-        var left = b.Left; var right = b.Right; var top = b.Top; var bottom = b.Bottom;
+        if (!original.WorldMatrix.TryInvert(out var inverse)) throw new InvalidOperationException("Shape transform is singular.");
+        var delta = inverse.Map(current) - inverse.Map(start);
+        var left = 0d; var right = 1d; var top = 0d; var bottom = 1d;
         var west = handle is 0 or 6 or 7; var east = handle is 2 or 3 or 4;
         var north = handle is 0 or 1 or 2; var south = handle is 4 or 5 or 6;
-        if (west) left = Math.Min(right - 16, left + delta.X);
-        if (east) right = Math.Max(left + 16, right + delta.X);
-        if (north) top = Math.Min(bottom - 16, top + delta.Y);
-        if (south) bottom = Math.Max(top + 16, bottom + delta.Y);
+        var minimumWidth = Math.Min(1, 16 / original.Width); var minimumHeight = Math.Min(1, 16 / original.Height);
+        if (west) left = Math.Min(right - minimumWidth, delta.X);
+        if (east) right = Math.Max(left + minimumWidth, 1 + delta.X);
+        if (north) top = Math.Min(bottom - minimumHeight, delta.Y);
+        if (south) bottom = Math.Max(top + minimumHeight, 1 + delta.Y);
         if (preserveAspect)
         {
-            var aspect = original.Width / original.Height;
             if (east || west)
             {
-                var height = (right - left) / aspect;
-                if (north) top = bottom - height;
-                else if (south) bottom = top + height;
-                else { top = b.Center.Y - height / 2; bottom = b.Center.Y + height / 2; }
+                var scale = right - left;
+                if (north) top = bottom - scale; else if (south) bottom = top + scale;
+                else { top = .5 - scale / 2; bottom = .5 + scale / 2; }
             }
-            else
-            {
-                var width = (bottom - top) * aspect;
-                left = b.Center.X - width / 2; right = b.Center.X + width / 2;
-            }
+            else { var scale = bottom - top; left = .5 - scale / 2; right = .5 + scale / 2; }
         }
-        var center = new PointD((left + right) / 2, (top + bottom) / 2).Rotate(original.Rotation, b.Center);
-        shape.Width = right - left; shape.Height = bottom - top;
+        var target = original.WorldMatrix * MatrixD.Translation(left, top) * MatrixD.Scale(right - left, bottom - top);
+        var center = target.Map(new PointD(.5, .5));
+        shape.X = original.X; shape.Y = original.Y; shape.Width = original.Width; shape.Height = original.Height;
+        shape.Rotation = original.Rotation; shape.ShearX = original.ShearX; shape.FlipX = original.FlipX; shape.FlipY = original.FlipY;
+        shape.ApplyWorldTransform(target * inverse);
         shape.X = center.X - shape.Width / 2; shape.Y = center.Y - shape.Height / 2;
+    }
+
+    public static MatrixD SelectionResize(RectD bounds, int handle, PointD start, PointD current, bool preserveAspect)
+    {
+        var source = new Shape { X = bounds.X, Y = bounds.Y, Width = Math.Max(1, bounds.Width), Height = Math.Max(1, bounds.Height) };
+        var target = source.Clone(); Resize(target, source, handle, start, current, preserveAspect);
+        source.WorldMatrix.TryInvert(out var inverse);
+        return target.WorldMatrix * inverse;
     }
 }
