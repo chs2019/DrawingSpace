@@ -105,9 +105,9 @@ public sealed class ShapeTextLayout : IDisposable
                     ?? new ParagraphFormat { Alignment = shape.Kind is ShapeKind.Text or ShapeKind.Container ? ParagraphAlignment.Left : ParagraphAlignment.Center };
                 var indent = (float)Math.Max(-bounds.Width + 1, format.LeftIndent + (format.Bullet ? shape.Style.FontSize * 1.2 : 0));
                 var width = (float)Math.Clamp(bounds.Width - indent - format.RightIndent, 1, 100000);
-                var block = new TextBlock(mapper)
+                var block = new TextBlock()
                 {
-                    MaxWidth = width, RenderWidth = width,
+                    FontMapper = mapper, MaxWidth = width, RenderWidth = width,
                     Alignment = format.Alignment switch { ParagraphAlignment.Left or ParagraphAlignment.Justify => TextAlignment.Left, ParagraphAlignment.Right => TextAlignment.Right, _ => TextAlignment.Center },
                     BaseDirection = format.Direction switch { ParagraphDirection.LeftToRight => TextDirection.LTR, ParagraphDirection.RightToLeft => TextDirection.RTL, _ => TextDirection.Auto }
                 };
@@ -174,7 +174,7 @@ public sealed class ShapeTextLayout : IDisposable
         var style = new Style
         {
             FontFamily = family, FontSize = (float)size, FontWeight = bold ? 700 : 400, FontItalic = italic,
-            AutoFontFallback = true, LineHeight = (float)lineHeight, TextColor = parsed,
+            LineHeight = (float)lineHeight, TextColor = parsed,
             Underline = underline ? UnderlineStyle.Solid : UnderlineStyle.None,
             StrikeThrough = strike ? StrikeThroughStyle.Solid : StrikeThroughStyle.None,
             FontVariant = baseline > 0 ? FontVariant.SuperScript : baseline < 0 ? FontVariant.SubScript : FontVariant.Normal
