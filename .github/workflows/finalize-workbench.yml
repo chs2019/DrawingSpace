@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-      - name: Commit integrity-checked fixes and remove temporary workflows
+      - name: Commit integrity-checked source fixes only
         id: source
         shell: bash
         run: |
@@ -30,17 +30,15 @@ jobs:
           assert len(payload)==22897
           assert hashlib.sha256(payload).hexdigest()=='894b75a90db1e463ccd9d613057ccf686a44da38295baaa839824512a1e57a41'
           Path('/tmp/finalize.patch').write_bytes(payload)
-          subprocess.run(['git','apply','--check','--unidiff-zero','/tmp/finalize.patch'],check=True)
-          subprocess.run(['git','apply','--unidiff-zero','/tmp/finalize.patch'],check=True)
-          for name in ['integrate-parity.yml','offline-validation-kit.yml','parity.yml','text-port.yml','workbench-validation.yml','integrate-workbench.yml','browser-regression.yml','finalize-workbench.yml']:
-              Path('.github/workflows',name).unlink(missing_ok=True)
+          subprocess.run(['git','apply','--check','--exclude=.github/workflows/*','--unidiff-zero','/tmp/finalize.patch'],check=True)
+          subprocess.run(['git','apply','--exclude=.github/workflows/*','--unidiff-zero','/tmp/finalize.patch'],check=True)
           Path('.github/integration/finalize.patch.xz').unlink()
           PY
           git add -A
           git diff --cached --check
           git config user.name 'DrawingSpace integration'
           git config user.email 'wieslawsoltes@users.noreply.github.com'
-          git commit -m 'fix: finalize connector grips, print-layer exports, browser regressions and reusable-package CI'
+          git commit -m 'fix: finalize connector grips, print-layer exports and browser regressions'
           git push origin HEAD:refs/heads/feat/visio-parity
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
   engine:
