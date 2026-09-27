@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <Description>Bounded, deterministic ShapeSheet formula parsing, dimensional evaluation and dependency discovery.</Description>
+  </PropertyGroup>
+</Project>

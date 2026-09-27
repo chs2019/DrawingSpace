@@ -8,6 +8,7 @@
     <ProjectReference Include="../../src/DrawingSpace.Editing/DrawingSpace.Editing.csproj" />
     <ProjectReference Include="../../src/DrawingSpace.Stencils/DrawingSpace.Stencils.csproj" />
     <ProjectReference Include="../../src/DrawingSpace.Skia/DrawingSpace.Skia.csproj" />
+    <ProjectReference Include="../../src/DrawingSpace.ShapeSheet/DrawingSpace.ShapeSheet.csproj" />
   </ItemGroup>
   <ItemGroup><Using Include="Xunit" /></ItemGroup>
 </Project>
