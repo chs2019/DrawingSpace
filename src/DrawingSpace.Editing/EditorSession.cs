@@ -18,6 +18,7 @@ public sealed partial class EditorSession
     private string[] _selectionBefore = [];
     private EditorTool _tool;
     private string _saved;
+    private string? _currentSnapshot;
 
     public DiagramDocument Document { get; private set; }
     public string ActivePageId { get; private set; }
@@ -36,7 +37,8 @@ public sealed partial class EditorSession
     public bool CanRedo => _historyIndex < _history.Count && !IsInteracting;
     public string UndoName => CanUndo ? _history[_historyIndex - 1].Name : "";
     public string RedoName => CanRedo ? _history[_historyIndex].Name : "";
-    public bool IsDirty => DocumentCodec.Save(Document) != _saved;
+    /// <summary>Cached per notified revision. Use transactions or Notify after directly changing the mutable model.</summary>
+    public bool IsDirty => (_currentSnapshot ??= DocumentCodec.Save(Document)) != _saved;
     public IReadOnlyList<Shape> SelectedShapes => Page.Shapes.Where(s => Selection.Contains(s.Id)).ToArray();
     public IReadOnlyList<Shape> EditableShapes => SelectedShapes.Where(s => !Page.IsLocked(s)).ToArray();
     public IReadOnlyList<Connector> SelectedConnectors => Page.Connectors.Where(c => Selection.Contains(c.Id)).ToArray();
@@ -57,13 +59,18 @@ public sealed partial class EditorSession
         Document = document ?? new();
         DocumentCodec.Validate(Document);
         ActivePageId = Document.Pages[0].Id;
-        _saved = DocumentCodec.Save(Document);
+        _saved = _currentSnapshot = DocumentCodec.Save(Document);
     }
 
     public void Notify(ChangeKind kind)
     {
-        if (kind is ChangeKind.Document or ChangeKind.Preview) Revision++;
+        if (kind is ChangeKind.Document or ChangeKind.Preview) { Revision++; _currentSnapshot = null; }
         Changed?.Invoke(kind);
+    }
+
+    private void PublishDocument(string snapshot)
+    {
+        Revision++; _currentSnapshot = snapshot; Changed?.Invoke(ChangeKind.Document);
     }
 
     public void Select(string? id, bool additive = false, bool subselect = false)
@@ -126,7 +133,7 @@ public sealed partial class EditorSession
             _historyIndex = _history.Count;
         }
         _before = null; _semanticBefore = null;
-        Notify(ChangeKind.Document);
+        PublishDocument(after);
         if (before != after) Committed?.Invoke(new(name, before, after, DocumentCommitKind.Edit));
     }
 
@@ -218,7 +225,7 @@ public sealed partial class EditorSession
         var valid = Page.Shapes.Select(s => s.Id).Concat(Page.Connectors.Select(c => c.Id)).ToHashSet();
         foreach (var id in selected.Where(valid.Contains)) Selection.Add(id);
         FormulaDiagnostics = [];
-        Notify(ChangeKind.Document);
+        PublishDocument(json);
     }
 
     public void ApplyRemote(DiagramDocument document)
@@ -236,10 +243,10 @@ public sealed partial class EditorSession
         Document = document; ActivePageId = document.Pages.FirstOrDefault(p => !p.IsBackground)?.Id ?? document.Pages[0].Id;
         Selection.Clear(); _history.Clear(); _historyIndex = 0; FormulaDiagnostics = [];
         _saved = DocumentCodec.Save(document);
-        Notify(ChangeKind.Document);
+        PublishDocument(_saved);
     }
 
-    public void MarkSaved() { _saved = DocumentCodec.Save(Document); Notify(ChangeKind.Selection); }
+    public void MarkSaved() { _saved = _currentSnapshot = DocumentCodec.Save(Document); Notify(ChangeKind.Selection); }
     public void SwitchPage(string id)
     {
         if (!Document.Pages.Any(p => p.Id == id)) return;

@@ -50,6 +50,18 @@ public sealed partial class EditorSession
         if (shapes.Count + edges.Count == 0) return;
         Execute("Delete objects", () =>
         {
+            var survivors = Page.Shapes.Where(s => !shapes.Contains(s.Id) && s.FormulaParentId is { } parent && shapes.Contains(parent)).ToArray();
+            if (survivors.Any(Page.IsLocked)) throw new InvalidOperationException("A locked coordinate child prevents deleting its parent.");
+            var scope = new ShapeSheetScope(Document, Page);
+            foreach (var child in survivors) CoordinateRebase.MaterializeParentReferences(scope, child, child);
+            foreach (var child in survivors)
+            {
+                var parent = child.FormulaParentId;
+                while (parent is not null && shapes.Contains(parent)) parent = Page.Find(parent)?.FormulaParentId;
+                CoordinateRebase.Reparent(Page, child, parent);
+            }
+            foreach (var group in Page.Groups)
+                if (group.AnchorShapeId is { } anchor && shapes.Contains(anchor)) group.AnchorShapeId = null;
             // Deleting a container does not silently delete its unselected contents.
             foreach (var shape in Page.Shapes.Where(s => s.ContainerId is not null && shapes.Contains(s.ContainerId))) shape.ContainerId = null;
             Page.Shapes.RemoveAll(s => shapes.Contains(s.Id));
@@ -77,97 +89,18 @@ public sealed partial class EditorSession
         Execute(name, () => { foreach (var edge in connectors) change(edge); });
     }
 
-    public string CopySelection()
-    {
-        var selected = SelectedShapes.Select(s => s.Id).ToHashSet();
-        foreach (var container in SelectedShapes) foreach (var member in Page.Descendants(container.Id)) selected.Add(member.Id);
-        var page = new DiagramPage
-        {
-            Width = Page.Width, Height = Page.Height,
-            Shapes = Page.Shapes.Where(s => selected.Contains(s.Id)).Select(s => s.Clone()).ToList(),
-            Connectors = Page.Connectors.Where(c => Selection.Contains(c.Id) || c.SourceId is not null && selected.Contains(c.SourceId) && c.TargetId is not null && selected.Contains(c.TargetId)).Select(c => c.Clone()).ToList(),
-            Layers = Page.Layers.Select(l => new DiagramLayer { Id = l.Id, Name = l.Name }).ToList()
-        };
-        var groupIds = new HashSet<string>();
-        foreach (var groupId in page.Shapes.Select(s => s.GroupId).Concat(page.Connectors.Select(c => c.GroupId)))
-        {
-            var id = groupId;
-            while (id is not null && groupIds.Add(id)) id = Page.Groups.FirstOrDefault(g => g.Id == id)?.ParentId;
-        }
-        page.Groups = Page.Groups.Where(g => groupIds.Contains(g.Id)).Select(g => g.Clone()).ToList();
-        foreach (var shape in page.Shapes) if (shape.ContainerId is not null && !selected.Contains(shape.ContainerId)) shape.ContainerId = null;
-        var routes = new OrthogonalRouter();
-        foreach (var edge in page.Connectors)
-        {
-            var route = routes.Route(Page, edge);
-            if (edge.SourceId is not null && !selected.Contains(edge.SourceId)) { edge.Start = route.Points[0]; edge.SourceId = null; edge.SourcePointId = null; }
-            if (edge.TargetId is not null && !selected.Contains(edge.TargetId)) { edge.End = route.Points[^1]; edge.TargetId = null; edge.TargetPointId = null; }
-        }
-        var masterIds = page.Shapes.Select(s => s.MasterId).OfType<string>().ToHashSet();
-        return DocumentCodec.Save(new()
-        {
-            Title = "Clipboard", Pages = [page], Masters = Document.Masters.Where(m => masterIds.Contains(m.Id)).Select(m => m.Clone()).ToList()
-        });
-    }
+    public string CopySelection() => ClipboardService.Copy(Document, Page, Selection);
 
     public void Paste(string json, PointD offset)
     {
         if (!offset.IsFinite) throw new ArgumentOutOfRangeException(nameof(offset));
-        var clipboard = DocumentCodec.Load(json); var input = clipboard.Pages[0];
-        var map = input.Shapes.ToDictionary(s => s.Id, _ => Guid.NewGuid().ToString("N"));
-        var groups = input.Groups.Select(g => g.Id).Concat(input.Shapes.Select(s => s.GroupId).OfType<string>()).Distinct().ToDictionary(id => id, _ => Guid.NewGuid().ToString("N"));
-        var masterMap = new Dictionary<string, string>(); var templateMap = new Dictionary<string, string>();
+        var clipboard = DocumentCodec.Load(json);
+        if (clipboard.Pages[0].Shapes.Count == 0 && clipboard.Pages[0].Connectors.Count == 0) return;
         Execute("Paste objects", () =>
         {
-            foreach (var original in clipboard.Masters)
-            {
-                var existing = Document.Masters.FirstOrDefault(m => m.Id == original.Id);
-                if (existing is not null && ModelJson.Serialize(existing) == ModelJson.Serialize(original)) { masterMap[original.Id] = existing.Id; continue; }
-                var master = original.Clone(); master.Id = Guid.NewGuid().ToString("N"); master.VisioId = null; master.VisioPart = null;
-                foreach (var template in master.Children.Prepend(master.Shape))
-                { var id = template.Id; template.Id = Guid.NewGuid().ToString("N"); templateMap[id] = template.Id; template.VisioId = null; }
-                foreach (var template in master.Children.Prepend(master.Shape))
-                    if (template.ContainerId is { } parent && templateMap.TryGetValue(parent, out var replacement)) template.ContainerId = replacement;
-                Document.Masters.Add(master); masterMap[original.Id] = master.Id;
-            }
-            foreach (var original in input.Groups)
-            {
-                var group = original.Clone(); group.Id = groups[original.Id]; group.VisioId = null;
-                group.AnchorShapeId = group.AnchorShapeId is { } anchor && map.TryGetValue(anchor, out var mappedAnchor) ? mappedAnchor : null;
-                group.ParentId = original.ParentId is not null && groups.TryGetValue(original.ParentId, out var parent) ? parent : null;
-                Page.Groups.Add(group);
-            }
-            Selection.Clear();
-            foreach (var original in input.Shapes)
-            {
-                var shape = original.Clone(true); shape.Id = map[original.Id]; shape.X += offset.X; shape.Y += offset.Y;
-                shape.GroupId = shape.GroupId is not null && groups.TryGetValue(shape.GroupId, out var group) ? group : null;
-                shape.ContainerId = shape.ContainerId is not null && map.TryGetValue(shape.ContainerId, out var container) ? container : null;
-                shape.MasterId = shape.MasterId is not null && masterMap.TryGetValue(shape.MasterId, out var master) ? master : null;
-                if (shape.MasterShapeId is { } template && templateMap.TryGetValue(template, out var replacement)) shape.MasterShapeId = replacement;
-                shape.FormulaParentId = shape.FormulaParentId is { } formulaParent && map.TryGetValue(formulaParent, out var mappedParent) ? mappedParent : null;
-                shape.MasterInstanceId = shape.MasterInstanceId is { } instance && map.TryGetValue(instance, out var mappedInstance) ? mappedInstance : null;
-                shape.LayerId = Page.Layers[0].Id; shape.Locked = false;
-                RemapFormulaReferences(shape.Cells, map);
-                Page.Shapes.Add(shape); Selection.Add(shape.Id);
-            }
-            foreach (var original in input.Connectors)
-            {
-                var edge = original.Clone(true);
-                edge.SourceId = edge.SourceId is not null && map.TryGetValue(edge.SourceId, out var from) ? from : null;
-                edge.TargetId = edge.TargetId is not null && map.TryGetValue(edge.TargetId, out var to) ? to : null;
-                edge.GroupId = edge.GroupId is not null && groups.TryGetValue(edge.GroupId, out var group) ? group : null;
-                edge.Start += offset; edge.End += offset; edge.Waypoints = edge.Waypoints.Select(p => p + offset).ToList(); edge.LayerId = Page.Layers[0].Id;
-                RemapFormulaReferences(edge.Cells, map);
-                Page.Connectors.Add(edge); Selection.Add(edge.Id);
-            }
+            var pasted = ClipboardService.Paste(Document, Page, clipboard, offset);
+            Selection.Clear(); Selection.UnionWith(pasted);
         });
-    }
-
-    private static void RemapFormulaReferences(Dictionary<string, ShapeCell> cells, IReadOnlyDictionary<string, string> map)
-    {
-        foreach (var cell in cells.Values)
-            foreach (var (oldId, newId) in map) cell.Formula = cell.Formula.Replace("Sheet." + oldId + "!", "Sheet." + newId + "!", StringComparison.OrdinalIgnoreCase);
     }
 
     public void Duplicate() { if (Selection.Count > 0) Paste(CopySelection(), new(24, 24)); }
@@ -238,7 +171,7 @@ public sealed partial class EditorSession
     public void Ungroup()
     {
         var groups = EditableShapes.Select(s => s.GroupId).OfType<string>().Select(Page.RootGroup).Distinct().ToArray(); if (groups.Length == 0) return;
-        Execute("Ungroup shapes", () => { foreach (var group in groups) GroupService.Ungroup(Page, group); });
+        Execute("Ungroup shapes", () => { foreach (var group in groups) GroupService.Ungroup(Page, group, Document); });
     }
     public void BringToFront(bool front)
     {
@@ -261,13 +194,17 @@ public sealed partial class EditorSession
     {
         var nodes = Page.Shapes.Where(s => !Page.IsLocked(s) && s.Kind is not ShapeKind.Text and not ShapeKind.Container && s.ContainerId is null).ToArray();
         var ids = nodes.Select(s => s.Id).ToHashSet();
-        var incoming = nodes.ToDictionary(s => s.Id, s => Page.Connectors.Count(c => c.TargetId == s.Id && c.SourceId is not null && ids.Contains(c.SourceId) && c.SourceId != s.Id));
+        var incoming = nodes.ToDictionary(s => s.Id, _ => 0);
+        var outgoing = nodes.ToDictionary(s => s.Id, _ => new List<string>());
+        foreach (var edge in Page.Connectors)
+            if (edge.SourceId is { } from && edge.TargetId is { } to && from != to && ids.Contains(from) && ids.Contains(to))
+            { outgoing[from].Add(to); incoming[to]++; }
         var levels = nodes.ToDictionary(s => s.Id, _ => 0); var queue = new Queue<string>(incoming.Where(p => p.Value == 0).Select(p => p.Key)); var seen = new HashSet<string>();
         while (queue.TryDequeue(out var id))
         {
             if (!seen.Add(id)) continue;
-            foreach (var edge in Page.Connectors.Where(c => c.SourceId == id && c.TargetId is not null && ids.Contains(c.TargetId) && c.TargetId != id))
-            { levels[edge.TargetId!] = Math.Max(levels[edge.TargetId!], levels[id] + 1); if (--incoming[edge.TargetId!] == 0) queue.Enqueue(edge.TargetId!); }
+            foreach (var target in outgoing[id])
+            { levels[target] = Math.Max(levels[target], levels[id] + 1); if (--incoming[target] == 0) queue.Enqueue(target); }
         }
         var cycleLevel = levels.Values.DefaultIfEmpty().Max() + 1;
         foreach (var shape in nodes.Where(s => !seen.Contains(s.Id))) levels[shape.Id] = cycleLevel++;

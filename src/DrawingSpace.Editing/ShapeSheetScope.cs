@@ -7,7 +7,9 @@ namespace DrawingSpace.Editing;
 /// <summary>One evaluation scope. Evaluate all cells before applying results so recalculation is order-independent.</summary>
 public sealed class ShapeSheetScope(DiagramDocument document, DiagramPage page)
 {
-    private readonly FormulaEngine _engine = new();
+    // Parsed formulas are immutable and carry no document values. Share only the bounded AST cache.
+    private static readonly FormulaEngine _engine = new();
+    private readonly Lazy<SheetReferenceIndex> _index = new(() => new(document, page));
     private readonly Dictionary<(string Shape, string Cell), FormulaValue> _values = [];
     private readonly HashSet<(string Shape, string Cell)> _active = [];
     private int _evaluations;
@@ -30,12 +32,12 @@ public sealed class ShapeSheetScope(DiagramDocument document, DiagramPage page)
     {
         var local = FindCell(shape.Cells, name);
         if (local is not null && !local.Inherited && !local.Formula.Equals("Inh", StringComparison.OrdinalIgnoreCase)) return local;
-        var template = MasterService.Template(document, shape);
+        var template = _index.Value.Template(shape);
         return template is null ? local : FindCell(template.Cells, name) ?? local;
     }
 
     public IEnumerable<string> Names(Shape shape) => shape.Cells.Keys
-        .Concat(MasterService.Template(document, shape)?.Cells.Keys ?? Enumerable.Empty<string>())
+        .Concat(_index.Value.Template(shape)?.Cells.Keys ?? Enumerable.Empty<string>())
         .Distinct(StringComparer.OrdinalIgnoreCase);
 
     public FormulaValue Resolve(Shape shape, string reference)
@@ -53,19 +55,7 @@ public sealed class ShapeSheetScope(DiagramDocument document, DiagramPage page)
         return target is null ? FormulaValue.Error("#REF!", reference) : Evaluate(target, cell);
     }
 
-    public Shape? FindSheet(Shape shape, string sheet)
-    {
-        if (sheet.Equals("ParentShape", StringComparison.OrdinalIgnoreCase)) return page.Find(shape.FormulaParentId) ?? page.Find(shape.ContainerId);
-        var id = sheet.StartsWith("Sheet.", StringComparison.OrdinalIgnoreCase) ? sheet[6..] : sheet;
-        if (shape.MasterInstanceId is { } instance)
-        {
-            var local = page.Shapes.FirstOrDefault(s => s.MasterInstanceId == instance &&
-                (s.MasterShapeId == id || MasterService.Template(document, s) is { } template &&
-                    (template.Id == id || template.VisioId?.ToString(CultureInfo.InvariantCulture) == id || template.Name.Equals(sheet, StringComparison.OrdinalIgnoreCase))));
-            if (local is not null) return local;
-        }
-        return page.Shapes.FirstOrDefault(s => s.Id == id || s.VisioId?.ToString(CultureInfo.InvariantCulture) == id || s.Name.Equals(sheet, StringComparison.OrdinalIgnoreCase));
-    }
+    public Shape? FindSheet(Shape shape, string sheet) => _index.Value.Resolve(shape, sheet);
 
     public FormulaValue EvaluateFormula(Shape shape, string formula) => _engine.Evaluate(formula, name => Resolve(shape, name));
 
