@@ -152,7 +152,8 @@ public sealed partial class EditorSession
         {
             Id = shape.Id, Name = shape.Name, Text = shape.Text, Kind = shape.Kind, X = shape.X, Y = shape.Y,
             Width = shape.Width, Height = shape.Height, Rotation = shape.Rotation, ShearX = shape.ShearX, FlipX = shape.FlipX, FlipY = shape.FlipY,
-            MasterId = shape.MasterId, MasterShapeId = shape.MasterShapeId, ContainerId = shape.ContainerId,
+            MasterId = shape.MasterId, MasterShapeId = shape.MasterShapeId, MasterInstanceId = shape.MasterInstanceId, ContainerId = shape.ContainerId,
+            UsesVisioCoordinates = shape.UsesVisioCoordinates, FormulaParentId = shape.FormulaParentId, CoordinateWidth = shape.CoordinateWidth, CoordinateHeight = shape.CoordinateHeight, IsGroupAnchor = shape.IsGroupAnchor,
             Style = shape.Style.Clone(), Data = new(shape.Data), VisioId = shape.VisioId, LocalOverrides = [.. shape.LocalOverrides],
             Cells = shape.Cells.ToDictionary(p => p.Key, p => p.Value.Clone(), StringComparer.OrdinalIgnoreCase)
         };

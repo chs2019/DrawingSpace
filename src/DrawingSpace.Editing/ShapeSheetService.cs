@@ -21,6 +21,7 @@ public static class ShapeSheetService
     public static IReadOnlyList<FormulaDiagnostic> Recalculate(DiagramDocument document)
     {
         var diagnostics = new List<FormulaDiagnostic>();
+        var coordinateChanges = VisioCoordinateService.Prepare(document, diagnostics);
         var pending = new List<Action>();
         foreach (var page in document.Pages)
         {
@@ -39,6 +40,7 @@ public static class ShapeSheetService
             }
         }
         foreach (var change in pending) change();
+        foreach (var change in coordinateChanges) change();
         return diagnostics;
     }
 
@@ -52,6 +54,8 @@ public static class ShapeSheetService
             { diagnostics.Add(new(page.Id, shape.Id, name, "#VALUE! Result is outside the document's supported range.")); return fallback; }
             return value.Numeric * scale;
         }
+        if (!shape.UsesVisioCoordinates)
+        {
         shape.Width = Number("Width", shape.Width, 96, 1, 100000);
         shape.Height = Number("Height", shape.Height, 96, 1, 100000);
         center = new(Number("PinX", center.X, 96, -1000000, 1000000), page.Height - Number("PinY", page.Height - center.Y, 96, -1000000, 1000000));
@@ -59,6 +63,7 @@ public static class ShapeSheetService
         shape.Rotation = Number("Angle", shape.Rotation, -180 / Math.PI, -360000, 360000);
         if (values.TryGetValue("FlipX", out var flipX)) shape.FlipX = flipX.IsTrue;
         if (values.TryGetValue("FlipY", out var flipY)) shape.FlipY = flipY.IsTrue;
+        }
         shape.Style.StrokeWidth = Number("LineWeight", shape.Style.StrokeWidth, 96, 0, 100);
         shape.Style.FontSize = Number("Char.Size", shape.Style.FontSize, 96, 1, 1024);
         if (values.TryGetValue("Char.Style", out var characterStyle) && characterStyle.IsNumeric)
@@ -129,6 +134,7 @@ public static class ShapeSheetService
                 if (old.Style.Stroke != shape.Style.Stroke) changed["LineColor"] = FormulaValue.Text(shape.Style.Stroke);
                 if (old.Style.TextColor != shape.Style.TextColor) changed["Char.Color"] = FormulaValue.Text(shape.Style.TextColor);
                 if (old.Text != shape.Text) changed["Text"] = FormulaValue.Text(shape.Text);
+                VisioCoordinateService.ReplaceGeometryChanges(oldPage, old, page, shape, changed);
                 foreach (var (name, value) in changed)
                 {
                     if (scope.Cell(shape, name) is not { } cell) continue;

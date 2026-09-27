@@ -125,7 +125,12 @@ public sealed class FormulaEngine
         if (name == "SUBSTITUTE") return n == 3 && b.ToString().Length > 0 ? FormulaValue.Text(a.ToString().Replace(b.ToString(), values[2].ToString(), StringComparison.Ordinal)) : Arity();
         if (name == "FIND") { if (n is < 2 or > 3) return Arity(); var s = b.ToString(); var start = n == 3 ? Math.Clamp((int)values[2].Numeric - 1, 0, s.Length) : 0; var position = s.IndexOf(a.ToString(), start, StringComparison.Ordinal); return position < 0 ? FormulaValue.Error("#VALUE!", "Text not found.") : FormulaValue.Number(position + 1); }
         if (name == "FORMAT") { if (n != 2 || !a.IsNumeric) return Arity(); try { return FormulaValue.Text(a.Numeric.ToString(b.ToString(), CultureInfo.InvariantCulture)); } catch (FormatException) { return Arity(); } }
-        if (name == "VALUE") return n == 1 ? Evaluate(a.ToString(), resolve) : Arity();
+        if (name == "VALUE")
+        {
+            if (n != 1) return Arity();
+            try { return Visit(FormulaParser.Parse(a.ToString()).Root, resolve, ref budget, depth + 1); }
+            catch (FormatException ex) { return FormulaValue.Error("#PARSE!", ex.Message); }
+        }
         if (name == "CONVERT") return n == 2 ? FormulaUnits.Convert(a, b.ToString()) : Arity();
         if (name == "RGB") return n == 3 && values.All(v => v.IsNumeric) ? FormulaValue.Number((int)Math.Clamp(a.Numeric, 0, 255) | (int)Math.Clamp(b.Numeric, 0, 255) << 8 | (int)Math.Clamp(values[2].Numeric, 0, 255) << 16) : Arity();
         if (name == "PI") return n == 0 ? FormulaValue.Number(Math.PI) : Arity();

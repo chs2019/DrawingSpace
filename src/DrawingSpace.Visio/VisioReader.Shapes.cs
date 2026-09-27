@@ -57,6 +57,8 @@ internal sealed partial class VisioReadContext
             shape.MasterId = master.Id;
             shape.MasterShapeId = master.Children.Prepend(master.Shape).FirstOrDefault(s => s.VisioId == templateId)?.Id ?? master.Shape.Id;
             var localCells = VisioXml.ReadCells(local);
+            foreach (var (cellName, cellValue) in shape.Cells)
+                if (!localCells.TryGetValue(cellName, out var localCell) || localCell.Inherited) cellValue.Inherited = true;
             // Imported cached appearance is an explicit override only where the instance actually writes a cell.
             foreach (var pair in new[] { ("Width", "Width"), ("Height", "Height"), ("FillForegnd", "Style.Fill"), ("LineColor", "Style.Stroke"), ("LineWeight", "Style.StrokeWidth"), ("Char.Size", "Style.FontSize"), ("Char.Color", "Style.TextColor"), ("Char.Style", "Style.Bold") })
                 if (localCells.TryGetValue(pair.Item1, out var cell) && !cell.Inherited) shape.LocalOverrides.Add(pair.Item2);
@@ -69,7 +71,7 @@ internal sealed partial class VisioReadContext
         if (!isGroup) return;
         shape.IsGroupAnchor = true;
         if (shape.Geometry.Count == 0 && shape.Text.Length == 0) { shape.Style.Opacity = 0; shape.Kind = ShapeKind.Rectangle; }
-        var group = new DiagramGroup { Id = "group-" + nativeId, Name = shape.Name, ParentId = groupId, VisioId = id, AnchorShapeId = nativeId };
+        var group = new DiagramGroup { Id = (string?)local.Attribute(VisioNamespaces.DrawingSpace + "GroupId") ?? "group-" + nativeId, Name = shape.Name, ParentId = groupId, VisioId = id, AnchorShapeId = nativeId };
         shape.GroupId = group.Id; page.Groups.Add(group);
         var ownChildren = VisioXml.Child(local, "Shapes");
         var children = VisioXml.Children(ownChildren ?? VisioXml.Child(effective, "Shapes"), "Shape").ToArray();

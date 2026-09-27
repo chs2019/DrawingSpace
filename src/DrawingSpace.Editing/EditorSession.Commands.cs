@@ -133,6 +133,7 @@ public sealed partial class EditorSession
             foreach (var original in input.Groups)
             {
                 var group = original.Clone(); group.Id = groups[original.Id]; group.VisioId = null;
+                group.AnchorShapeId = group.AnchorShapeId is { } anchor && map.TryGetValue(anchor, out var mappedAnchor) ? mappedAnchor : null;
                 group.ParentId = original.ParentId is not null && groups.TryGetValue(original.ParentId, out var parent) ? parent : null;
                 Page.Groups.Add(group);
             }
@@ -144,6 +145,8 @@ public sealed partial class EditorSession
                 shape.ContainerId = shape.ContainerId is not null && map.TryGetValue(shape.ContainerId, out var container) ? container : null;
                 shape.MasterId = shape.MasterId is not null && masterMap.TryGetValue(shape.MasterId, out var master) ? master : null;
                 if (shape.MasterShapeId is { } template && templateMap.TryGetValue(template, out var replacement)) shape.MasterShapeId = replacement;
+                shape.FormulaParentId = shape.FormulaParentId is { } formulaParent && map.TryGetValue(formulaParent, out var mappedParent) ? mappedParent : null;
+                shape.MasterInstanceId = shape.MasterInstanceId is { } instance && map.TryGetValue(instance, out var mappedInstance) ? mappedInstance : null;
                 shape.LayerId = Page.Layers[0].Id; shape.Locked = false;
                 RemapFormulaReferences(shape.Cells, map);
                 Page.Shapes.Add(shape); Selection.Add(shape.Id);

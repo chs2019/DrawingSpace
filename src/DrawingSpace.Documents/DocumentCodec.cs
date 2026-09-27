@@ -101,6 +101,7 @@ public static partial class DocumentCodec
             }
         }
         ValidateTree(document.Pages.ToDictionary(p => p.Id, p => p.BackgroundPageId), "background page");
+        AdvancedDocumentValidation.Validate(document);
     }
     private static void ValidateShape(Shape shape)
     {

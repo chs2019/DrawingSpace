@@ -14,7 +14,8 @@ internal sealed partial class VisioReadContext
         XElement? inherited = null;
         if (masterId is { } id && _masterRoots.TryGetValue(id, out var root))
         {
-            inherited = templateId is null ? root : root.DescendantsAndSelf().FirstOrDefault(e => e.Name.LocalName == "Shape" && VisioXml.Id(e) == templateId);
+            var requestedTemplate = templateId;
+            inherited = requestedTemplate is null ? root : root.DescendantsAndSelf().FirstOrDefault(e => e.Name.LocalName == "Shape" && VisioXml.Id(e) == requestedTemplate);
             if (inherited is not null) templateId ??= VisioXml.Id(inherited);
         }
         var combined = VisioXml.Merge(inherited, local);

@@ -40,7 +40,7 @@ public static class MasterService
             var template = Template(document, instance); if (template is null) continue;
             var center = instance.Bounds.Center;
             foreach (var property in Properties)
-                if (!instance.LocalOverrides.Contains(property.Name, StringComparer.OrdinalIgnoreCase)) property.Copy(instance, template);
+                if (!(instance.UsesVisioCoordinates && property.Name is "Width" or "Height") && !instance.LocalOverrides.Contains(property.Name, StringComparer.OrdinalIgnoreCase)) property.Copy(instance, template);
             instance.X = center.X - instance.Width / 2; instance.Y = center.Y - instance.Height / 2;
             if (!instance.LocalOverrides.Contains("Geometry", StringComparer.OrdinalIgnoreCase)) instance.Geometry = template.Geometry.Select(g => g.Clone()).ToList();
             if (!instance.LocalOverrides.Contains("ConnectionPoints", StringComparer.OrdinalIgnoreCase)) instance.ConnectionPoints = template.ConnectionPoints.Select(p => p.Clone()).ToList();

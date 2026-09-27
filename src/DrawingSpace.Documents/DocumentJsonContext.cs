@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace DrawingSpace.Documents;
 
-[JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, UseStringEnumConverter = true)]
+[JsonSourceGenerationOptions(WriteIndented = true, IgnoreReadOnlyProperties = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, UseStringEnumConverter = true)]
 [JsonSerializable(typeof(DiagramDocument))]
 [JsonSerializable(typeof(DiagramPage))]
 [JsonSerializable(typeof(DiagramMaster))]

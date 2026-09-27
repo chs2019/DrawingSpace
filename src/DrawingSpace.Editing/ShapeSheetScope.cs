@@ -55,7 +55,7 @@ public sealed class ShapeSheetScope(DiagramDocument document, DiagramPage page)
 
     public Shape? FindSheet(Shape shape, string sheet)
     {
-        if (sheet.Equals("ParentShape", StringComparison.OrdinalIgnoreCase)) return page.Find(shape.ContainerId);
+        if (sheet.Equals("ParentShape", StringComparison.OrdinalIgnoreCase)) return page.Find(shape.FormulaParentId) ?? page.Find(shape.ContainerId);
         var id = sheet.StartsWith("Sheet.", StringComparison.OrdinalIgnoreCase) ? sheet[6..] : sheet;
         return page.Shapes.FirstOrDefault(s => s.Id == id || s.VisioId?.ToString(CultureInfo.InvariantCulture) == id || s.Name.Equals(sheet, StringComparison.OrdinalIgnoreCase));
     }
@@ -100,6 +100,7 @@ public sealed class ShapeSheetScope(DiagramDocument document, DiagramPage page)
 
     private FormulaValue Builtin(Shape shape, string name)
     {
+        if (VisioCoordinateService.Builtin(page, shape, name) is { } imported) return imported;
         var length = new FormulaDimension(Length: 1);
         return name.ToUpperInvariant() switch
         {
