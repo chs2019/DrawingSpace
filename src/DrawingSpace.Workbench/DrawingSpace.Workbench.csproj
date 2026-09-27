@@ -1,0 +1,10 @@
+<Project Sdk="Uno.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-browserwasm;net10.0-desktop</TargetFrameworks>
+    <TargetFrameworks Condition="'$(DrawingSpaceDesktopOnly)' == 'true'">net10.0-desktop</TargetFrameworks>
+    <UnoSingleProject>true</UnoSingleProject><OutputType>Library</OutputType><GenerateLibraryLayout>true</GenerateLibraryLayout>
+    <UnoFeatures>SkiaRenderer;</UnoFeatures><IsPackable>true</IsPackable>
+    <Description>A reusable Visio-style Uno diagram workbench with ribbon, stencils, property panes, pages and local-first storage services.</Description>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../DrawingSpace.Editor/DrawingSpace.Editor.csproj" /></ItemGroup>
+</Project>

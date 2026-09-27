@@ -1,0 +1,10 @@
+<Project Sdk="Uno.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-browserwasm;net10.0-desktop</TargetFrameworks>
+    <TargetFrameworks Condition="'$(DrawingSpaceDesktopOnly)' == 'true'">net10.0-desktop</TargetFrameworks>
+    <UnoSingleProject>true</UnoSingleProject><OutputType>Library</OutputType><GenerateLibraryLayout>true</GenerateLibraryLayout>
+    <UnoFeatures>SkiaRenderer;</UnoFeatures><IsPackable>true</IsPackable>
+    <Description>Embeddable Uno and SkiaSharp diagram surface with selection, snapping, resize, rotation, text editing and connectors.</Description>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../DrawingSpace.Controls/DrawingSpace.Controls.csproj" /><ProjectReference Include="../DrawingSpace.Editing/DrawingSpace.Editing.csproj" /></ItemGroup>
+</Project>

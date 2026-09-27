@@ -1,0 +1,87 @@
+name: Build
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet test tests/DrawingSpace.Tests -c Release --logger 'trx;LogFileName=engine.trx' --results-directory artifacts/test-results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: DrawingSpace-engine-validation
+          path: artifacts/test-results
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install WebAssembly toolchain
+        run: dotnet workload install wasm-tools --skip-manifest-update
+      - name: Publish real Uno WebAssembly application
+        run: |
+          dotnet publish src/DrawingSpace.App -f net10.0-browserwasm -c Release -o artifacts/publish -p:WasmShellWebAppBasePath=/DrawingSpace/
+          python3 scripts/collect-site.py artifacts/publish artifacts/site
+      - name: Test browser interaction
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          python3 scripts/serve-site.py --directory artifacts/site --port 4173 > artifacts/server.log 2>&1 &
+          npm run test:browser
+      - name: Build reusable NuGet packages
+        run: |
+          for project in src/*/*.csproj; do
+            case "$project" in */DrawingSpace.App/*) continue;; esac
+            dotnet pack "$project" -c Release -o artifacts/packages
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: DrawingSpace-browser
+          path: artifacts/site
+          include-hidden-files: true
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: DrawingSpace-packages
+          path: artifacts/packages
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: DrawingSpace-browser-validation
+          path: |
+            artifacts/screenshots
+            artifacts/browser-results.json
+            artifacts/browser-console.log
+            artifacts/server.log
+            package-lock.json
+          if-no-files-found: ignore
+      - name: Source archive
+        if: always()
+        run: git archive --format=zip --output=/tmp/DrawingSpace-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: DrawingSpace-source
+          path: /tmp/DrawingSpace-source.zip

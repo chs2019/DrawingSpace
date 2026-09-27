@@ -1,0 +1,13 @@
+<Project Sdk="Uno.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-browserwasm;net10.0-desktop</TargetFrameworks>
+    <TargetFrameworks Condition="'$(DrawingSpaceDesktopOnly)' == 'true'">net10.0-desktop</TargetFrameworks>
+    <UnoSingleProject>true</UnoSingleProject><OutputType>Library</OutputType><GenerateLibraryLayout>true</GenerateLibraryLayout>
+    <UnoFeatures>SkiaRenderer;</UnoFeatures><IsPackable>true</IsPackable>
+    <Description>Reusable custom Uno ribbon, command buttons, stencil gallery, palettes and page navigation.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../DrawingSpace.Stencils/DrawingSpace.Stencils.csproj" />
+    <ProjectReference Include="../DrawingSpace.Skia/DrawingSpace.Skia.csproj" />
+  </ItemGroup>
+</Project>

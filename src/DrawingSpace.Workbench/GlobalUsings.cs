@@ -1,0 +1,13 @@
+global using Microsoft.UI.Xaml;
+global using Microsoft.UI.Xaml.Controls;
+global using Microsoft.UI.Xaml.Input;
+global using Microsoft.UI.Xaml.Media;
+global using Microsoft.UI.Xaml.Automation;
+global using Windows.Foundation;
+global using Windows.System;
+global using DrawingSpace.Core;
+global using DrawingSpace.Documents;
+global using DrawingSpace.Editing;
+global using DrawingSpace.Controls;
+global using DrawingSpace.Editor;
+global using DrawingSpace.Stencils;

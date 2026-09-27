@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DrawingSpace.Core/DrawingSpace.Core.csproj" />
+    <Project Path="src/DrawingSpace.Documents/DrawingSpace.Documents.csproj" />
+    <Project Path="src/DrawingSpace.Routing/DrawingSpace.Routing.csproj" />
+    <Project Path="src/DrawingSpace.Editing/DrawingSpace.Editing.csproj" />
+    <Project Path="src/DrawingSpace.Stencils/DrawingSpace.Stencils.csproj" />
+    <Project Path="src/DrawingSpace.Skia/DrawingSpace.Skia.csproj" />
+    <Project Path="src/DrawingSpace.Controls/DrawingSpace.Controls.csproj" />
+    <Project Path="src/DrawingSpace.Editor/DrawingSpace.Editor.csproj" />
+    <Project Path="src/DrawingSpace.Workbench/DrawingSpace.Workbench.csproj" />
+    <Project Path="src/DrawingSpace.App/DrawingSpace.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/"><Project Path="tests/DrawingSpace.Tests/DrawingSpace.Tests.csproj" /></Folder>
+</Solution>
