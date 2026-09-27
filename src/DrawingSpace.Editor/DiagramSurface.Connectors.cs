@@ -49,7 +49,7 @@ public sealed partial class DiagramSurface
         for (var index = 0; index < edge.Waypoints.Count; index++)
         {
             if (!Near(edge.Waypoints[index])) continue;
-            if (modifiers.HasFlag(VirtualKeyModifiers.Shift))
+            if (IsShiftDown || modifiers.HasFlag(VirtualKeyModifiers.Shift) || Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down))
             {
                 var remove = index; session.Execute("Remove waypoint", () => edge.Waypoints.RemoveAt(remove)); ReleaseCaptures(); return true;
             }
@@ -57,7 +57,12 @@ public sealed partial class DiagramSurface
         }
         if (!string.IsNullOrEmpty(edge.Text) && Near(LineJumpService.LabelPoint(edge, route)))
         { session.Begin("Move connector label"); _gesture = Gesture.ConnectorLabel; return true; }
-        if (modifiers.HasFlag(VirtualKeyModifiers.Menu) && edge.Waypoints.Count < 4096)
+        var altDown = IsAltDown || modifiers.HasFlag(VirtualKeyModifiers.Menu)
+            || Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+        var gripSegment = Enumerable.Range(1, route.Points.Count - 1).FirstOrDefault(i =>
+            route.Points[i - 1].Distance(route.Points[i]) * session.Viewport.Zoom >= 28
+            && Near((route.Points[i - 1] + route.Points[i]) / 2));
+        if ((altDown || gripSegment > 0) && edge.Waypoints.Count < 4096)
         {
             var segment = Enumerable.Range(1, route.Points.Count - 1)
                 .MinBy(i => PointD.DistanceToSegment(world, route.Points[i - 1], route.Points[i]));
@@ -114,6 +119,16 @@ public sealed partial class DiagramSurface
         foreach (var edge in session.SelectedConnectors)
         {
             if (!Renderer.Routes(session.Page, session.Revision).TryGetValue(edge.Id, out var route)) continue;
+            // Hollow midpoint grips also expose waypoint insertion to touch and pen users.
+            for (var index = 1; index < route.Points.Count; index++)
+            {
+                var a = route.Points[index - 1]; var b = route.Points[index];
+                if (a.Distance(b) * session.Viewport.Zoom < 28) continue;
+                var p = session.Viewport.ToScreen((a + b) / 2);
+                if (edge.Text.Length > 0 && session.Viewport.ToScreen(LineJumpService.LabelPoint(edge, route)).Distance(p) < 12) continue;
+                canvas.DrawCircle((float)p.X, (float)p.Y, 3, white);
+                canvas.DrawCircle((float)p.X, (float)p.Y, 3, outline);
+            }
             foreach (var waypoint in edge.Waypoints)
             {
                 var p = session.Viewport.ToScreen(waypoint); var rect = new SKRect((float)p.X - 4, (float)p.Y - 4, (float)p.X + 4, (float)p.Y + 4);

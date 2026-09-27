@@ -56,7 +56,13 @@ public sealed partial class DiagramWorkbench : UserControl, IDisposable
         Surface.StatusChanged += text => ShowStatus(text);
         Surface.ContextRequested += ShowContextMenu;
         Session.Changed += SessionChanged;
-        KeyDown += WorkbenchKeyDown; KeyUp += (_, e) => { if (e.Key == VirtualKey.Space) Surface.IsSpaceDown = false; };
+        KeyDown += WorkbenchKeyDown;
+        KeyUp += (_, e) =>
+        {
+            if (e.Key == VirtualKey.Space) Surface.IsSpaceDown = false;
+            if (e.Key == VirtualKey.Menu) Surface.IsAltDown = false;
+            if (e.Key == VirtualKey.Shift) Surface.IsShiftDown = false;
+        };
         _autosave.Tick += (_, _) => { _autosave.Stop(); RunAsync(WriteRecoveryAsync); };
         Loaded += (_, _) => { Refresh(); Surface.FocusCanvas(); };
         SizeChanged += (_, _) => { _body.ColumnDefinitions[0].Width = _stencils.Visibility == Visibility.Collapsed ? new(0) : new(ActualWidth < 850 ? 190 : 232); };

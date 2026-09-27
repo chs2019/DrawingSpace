@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import shutil
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 parser = argparse.ArgumentParser()
@@ -19,7 +20,7 @@ shutil.copytree(source, args.output, dirs_exist_ok=True)
 (args.output / '.nojekyll').touch()
 (args.output / 'build-info.json').write_text(json.dumps({
     'application': 'DrawingSpace', 'host': 'Uno WebAssembly',
-    'version': os.environ.get('VERSION', '0.1.0-alpha.1'),
+    'version': os.environ.get('VERSION') or ET.parse(Path(__file__).resolve().parent.parent / 'Directory.Build.props').findtext('./PropertyGroup/Version'),
     'commit': os.environ.get('GITHUB_SHA', 'local')
 }))
 print(f'Collected {source} into {args.output}')

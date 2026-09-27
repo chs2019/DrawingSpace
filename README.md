@@ -34,7 +34,7 @@ The **Developer** ribbon opens ShapeSheet, Masters, Containers, Rich Text, Conne
 
 The **File** ribbon opens native JSON, VSDX, VSTX and VDX files. Opening VSSX merges a master library into the current drawing rather than replacing it. Visio export has explicit VSDX/VSSX/VSTX commands. Unsupported constructs remain visible in compatibility diagnostics; the reader never executes embedded code or fetches external relationships.
 
-Connectors expose endpoint circles, waypoint squares and label diamonds. Drag an endpoint to glue or detach it; Alt-drag a segment to insert a waypoint; Shift-click a waypoint to remove it. Moving a semantic container moves its members and internal connector waypoints together.
+Connectors expose endpoint circles, waypoint squares and label diamonds. Drag an endpoint to glue or detach it; drag a hollow midpoint grip or Alt-drag a segment to insert a waypoint; Shift-click a waypoint to remove it. Moving a semantic container moves its members and internal connector waypoints together.
 
 ## Run from source
 
@@ -79,7 +79,7 @@ In another terminal:
 npm run test:browser
 ```
 
-The browser suite drives actual pointer and keyboard input. Its opt-in `?test=1` diagnostics expose **read-only** geometry and control bounds; they do not inject edits or replace input handling. Tests cover startup and proportional fonts, stencil insertion, undo/redo, dragging, label editing, duplication, page operations, zoom, task panes, SVG download, and recovery across a reload. Screenshots, console logs, and reports are uploaded by CI. Engine tests cover geometry, transforms, persistence, routing, transactions, validation, and Skia exports.
+The browser suite drives actual pointer and keyboard input. Its opt-in `?test=1` diagnostics expose **read-only** geometry and control bounds; they do not inject edits or replace input handling. Tests cover startup and proportional fonts, stencil insertion, undo/redo, dragging, label editing, duplication, page operations, zoom, task panes, SVG download, recovery across a reload, formula editing, rich text ranges, masters, semantic containers, connector handles, and real VSDX/VSSX file pickers. Screenshots, console logs, and reports are uploaded by CI. Engine tests cover geometry, transforms, persistence, routing, transactions, validation, and Skia exports.
 
 ## Twelve reusable packages
 

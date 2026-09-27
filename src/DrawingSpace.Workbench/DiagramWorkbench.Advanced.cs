@@ -154,7 +154,7 @@ public sealed partial class DiagramWorkbench
 
     private void BuildConnectionsPane()
     {
-        Paragraph("Select a connector to drag its endpoint circles, waypoint squares or label diamond. Alt-click a segment to insert a waypoint. Shift-click a waypoint removes it.");
+        Paragraph("Select a connector to drag its endpoint circles, waypoint squares or label diamond. Drag a hollow segment grip, or Alt-drag a segment, to insert a waypoint. Shift-click a waypoint removes it.");
         if (Session.SelectedConnectors.Count == 1)
         {
             var edge = Session.SelectedConnectors[0];

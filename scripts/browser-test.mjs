@@ -35,7 +35,18 @@ function center(state, shape) {
 }
 async function check(name, action) {
   const started = Date.now();
-  await action(); results.push({ name, passed: true, milliseconds: Date.now() - started }); console.log(`PASS ${name}`);
+  try {
+    await action();
+    results.push({ name, passed: true, milliseconds: Date.now() - started });
+    console.log(`PASS ${name}`);
+  } catch (error) {
+    results.push({ name, passed: false, milliseconds: Date.now() - started, error: error.stack });
+    console.error(`FAIL ${name}: ${error.message}`);
+    await fs.writeFile(`${output}/failure-${results.length}.json`, JSON.stringify(await snapshot().catch(() => null), null, 2));
+    await page.screenshot({ path: `${output}/screenshots/failure-${results.length}.png` }).catch(() => {});
+    // Keep later independent scenarios observable; the aggregate assertion still fails the run.
+    await page.keyboard.up('Alt'); await page.keyboard.up('Shift'); await page.mouse.up();
+  }
 }
 try {
   await page.goto(base + (base.includes('?') ? '&' : '?') + 'test=1', { waitUntil: 'domcontentloaded', timeout: 120000 });
@@ -102,6 +113,8 @@ try {
     await until(s => s.status.includes('Exported') || s.status.includes('saved'), 'No completed operation status');
     await page.waitForTimeout(1200); await page.reload({ waitUntil: 'domcontentloaded', timeout: 120000 });
     await until(s => s.ready && s.nodes === 14 && s.shapes.some(n => n.text === 'Ready for review'), 'Recovery did not restore the edited drawing', 120000);
+    await page.locator('.uno-loader').waitFor({ state: 'hidden', timeout: 30000 });
+    await page.waitForTimeout(300); // Allow the read-only geometry snapshot to observe the final fitted viewport.
   });
 
   async function enter(name, value) { await click(name); await page.keyboard.press('Control+a'); await page.keyboard.type(value); }
@@ -154,10 +167,19 @@ try {
     await until(s => s.connectors.some(c => c.id === edge.id && c.targetId === null), 'Endpoint stayed attached after drag');
     await click('Undo'); await until(s => s.connectors.some(c => c.id === edge.id && c.targetId === edge.targetId), 'Endpoint undo did not restore attachment');
   });
+  await check('Visible segment grips insert and move waypoints without a keyboard modifier', async () => {
+    const state = await snapshot(); const edge = state.connectors.find(c => c.selected); assert.ok(edge);
+    const p = {x:(edge.route[0].x + edge.route[1].x)/2,y:(edge.route[0].y + edge.route[1].y)/2};
+    const a = screen(state,p); await drag(a,{x:a.x+45,y:a.y+12});
+    await until(s => s.connectors.some(c => c.id === edge.id && c.waypointCount > 0), 'Segment grip did not insert a waypoint');
+    await click('Undo'); await until(s => s.connectors.some(c => c.id === edge.id && c.waypointCount === 0), 'Waypoint insertion did not undo');
+  });
   await check('Alt-drag inserts a route waypoint and it can be removed with Shift-click', async () => {
     const state = await snapshot(); const edge = state.connectors.find(c => c.selected); assert.ok(edge);
     const p = {x:(edge.route[0].x + edge.route[1].x)/2,y:(edge.route[0].y + edge.route[1].y)/2}; const a = screen(state,p);
-    await page.keyboard.down('Alt'); await drag(a,{x:a.x+45,y:a.y+12}); await page.keyboard.up('Alt');
+    await page.keyboard.down('Alt');
+    try { await drag(a,{x:a.x+45,y:a.y+12}); }
+    finally { await page.keyboard.up('Alt'); }
     const after = await until(s => s.connectors.some(c => c.id === edge.id && c.waypointCount > 0), 'Waypoint was not inserted');
     const point = screen(after,after.connectors.find(c => c.id === edge.id).waypoints[0]);
     await page.keyboard.down('Shift'); await page.mouse.click(point.x,point.y); await page.keyboard.up('Shift');
@@ -180,6 +202,7 @@ try {
     await until(s => s.masters > state.masters && s.nodes === state.nodes, 'Stencil library did not merge into the drawing');
     await page.screenshot({path: `${output}/screenshots/DrawingSpace-master-library.png`});
   });
+  assert.ok(results.every(result => result.passed), 'One or more browser scenarios failed');
   assert.deepEqual(errors, [], 'The browser reported JavaScript or WebAssembly errors');
   console.log(`Validated ${results.length} browser scenarios at ${base}`);
 } catch (error) {

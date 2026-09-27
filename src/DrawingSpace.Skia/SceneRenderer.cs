@@ -16,6 +16,7 @@ public sealed partial class SceneRenderer : IDisposable
     private readonly Dictionary<string, RouteResult> _routes = [];
     private readonly Dictionary<string, (SKTypeface Typeface, SKFont Font)> _fonts = [];
     private DiagramPage? _routePage;
+    private bool _routePrinting;
     private long _revision = -1;
     private SKTypeface? _fallbackTypeface;
     private readonly Dictionary<(bool Bold, bool Italic), SKTypeface> _fallbackStyles = [];
@@ -26,12 +27,12 @@ public sealed partial class SceneRenderer : IDisposable
         _fonts.Clear(); _fallbackTypeface?.Dispose(); _fallbackTypeface = typeface;
     }
     public void ClearCache() { _routePage = null; _routes.Clear(); }
-    public IReadOnlyDictionary<string, RouteResult> Routes(DiagramPage page, long revision)
+    public IReadOnlyDictionary<string, RouteResult> Routes(DiagramPage page, long revision, bool printing = false)
     {
-        if (!ReferenceEquals(page, _routePage) || _revision != revision)
+        if (!ReferenceEquals(page, _routePage) || _revision != revision || _routePrinting != printing)
         {
-            _routePage = page; _revision = revision; _routes.Clear();
-            var visibleEdges = page.Connectors.Where(c => page.IsVisible(c.LayerId)).ToArray();
+            _routePage = page; _revision = revision; _routePrinting = printing; _routes.Clear();
+            var visibleEdges = page.Connectors.Where(c => page.IsVisible(c.LayerId) && (!printing || page.IsPrintable(c.LayerId))).ToArray();
             foreach (var edge in visibleEdges) _routes[edge.Id] = _router.Route(page, edge);
             var analysis = LineJumpService.Analyze(visibleEdges, _routes);
             _jumps = analysis.Jumps; LineJumpBudgetExceeded = analysis.BudgetExceeded;
@@ -57,7 +58,7 @@ public sealed partial class SceneRenderer : IDisposable
         using var background = new SKPaint { Color = SKColor.Parse(page.Background) };
         if (drawBackground) canvas.DrawRect(ShapeGeometry.Rect(page.Bounds), background);
         if (grid) DrawGrid(canvas, page, visible ?? page.Bounds);
-        var routes = Routes(page, revision);
+        var routes = Routes(page, revision, printing);
         bool Visible(string layer) => page.IsVisible(layer) && (!printing || page.IsPrintable(layer));
         foreach (var shape in page.Shapes.Where(s => s.Kind == ShapeKind.Container && Visible(s.LayerId)))
             if (visible is null || shape.WorldBounds.Intersects(visible.Value)) DrawShape(canvas, shape);

@@ -36,6 +36,11 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
     private string? _textObjectId;
     public SceneRenderer Renderer { get; } = new();
     public bool IsSpaceDown { get; set; }
+    public bool IsAltDown { get; set; }
+    public bool IsShiftDown { get; set; }
+    public string ActiveGesture => _gesture.ToString();
+    public string LastPointerInput { get; private set; } = "";
+    public void ResetModifierKeys() { IsSpaceDown = false; IsAltDown = false; IsShiftDown = false; }
     public bool IsTextEditing => _textEditor is not null;
     public event Action<PointD>? CursorChanged;
     public event Action<Point>? ContextRequested;
@@ -126,6 +131,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
     {
         if (Session is not { } session) return;
         var pointer = e.GetCurrentPoint(_canvas);
+        LastPointerInput = $"{pointer.Position.X:0.##},{pointer.Position.Y:0.##} modifiers={e.KeyModifiers} alt={IsAltDown} shift={IsShiftDown}";
         if (pointer.Properties.IsRightButtonPressed) return;
         var screen = new PointD(pointer.Position.X, pointer.Position.Y); var world = session.Viewport.ToWorld(screen);
         FinishTextEdit(true); FocusCanvas();

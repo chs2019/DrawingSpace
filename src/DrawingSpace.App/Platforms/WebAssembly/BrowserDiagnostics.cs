@@ -25,6 +25,7 @@ internal static class BrowserDiagnostics
             {
                 var surface = workbench.Surface; var origin = surface.TransformToVisual(null).TransformPoint(new Point());
                 json.WriteStartObject(); json.WriteBoolean("ready", surface.ActualWidth > 0 && surface.ActualHeight > 0);
+                json.WriteString("gesture", surface.ActiveGesture); json.WriteString("lastPointerInput", surface.LastPointerInput);
                 json.WriteString("tool", session.Tool.ToString()); json.WriteString("title", session.Document.Title);
                 json.WriteNumber("nodes", session.Page.Shapes.Count); json.WriteNumber("edges", session.Page.Connectors.Count);
                 json.WriteNumber("masters", session.Document.Masters.Count); json.WriteNumber("groups", session.Page.Groups.Count); json.WriteBoolean("dirty", session.IsDirty); json.WriteNumber("pages", session.Document.Pages.Count); json.WriteNumber("selection", session.Selection.Count);

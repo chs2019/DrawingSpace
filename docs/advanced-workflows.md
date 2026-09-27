@@ -41,3 +41,5 @@ Review → New comment starts a local discussion on a shape. Reply to discussion
 ## Embedding
 
 `DiagramSurface` remains usable without `DiagramWorkbench`. `EditorSession`, `MasterService`, `DrawingFileCodec`, `VisioReader/Writer`, `ConnectionEndpoints`, `LineJumpService` and `RichTextLayoutEngine` are usable without Uno UI. Storage hosts can retain `IWorkspaceStorage` or additionally implement `IBinaryWorkspaceStorage`. Borrowed rich-text layouts belong to their engine cache and must not be retained past cache eviction or clear/disposal.
+
+Selected connectors expose hollow midpoint grips for inserting waypoints by pointer, pen, or touch. Existing waypoint squares remain draggable; Shift-click removes one. Alt-dragging a segment is the keyboard alternative.

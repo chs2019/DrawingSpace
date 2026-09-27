@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.2.0-alpha.1 — feature branch
+## 0.2.0-alpha.1
+
+- Fixed print-layer filtering in line-jump analysis, so non-printing reference lines cannot leave phantom jumps in PNG/PDF exports.
+- Added visible connector segment grips, robust keyboard modifier tracking, and read-only gesture observations for browser validation.
+- Replaced temporary integration workflows with a single read-only feature/main/PR build pipeline. — feature branch
 
 - Integrated managed VSDX/VSTX opening and export, VSSX library import/export, and VDX opening with bounded native/browser binary file selection and import diagnostics.
 - Added Developer task panes for ShapeSheet, document masters, semantic containers/swimlanes, selected-range rich text and connector settings.
