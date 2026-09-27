@@ -59,7 +59,7 @@ jobs:
         env:
           EXPECTED_SHA: ${{ steps.build.outputs.sha }}
         run: jq -e --arg sha "$EXPECTED_SHA" '.commit == $sha' site/build-info.json
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
         with:
           enablement: true
       - uses: actions/upload-pages-artifact@v3
