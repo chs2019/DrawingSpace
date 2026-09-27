@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><IsPackable>true</IsPackable><Description>Original diagram shape masters, stencil catalog and editable sample diagrams.</Description></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../DrawingSpace.Documents/DrawingSpace.Documents.csproj" /></ItemGroup>
+</Project>
