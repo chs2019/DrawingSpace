@@ -1,13 +1,24 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 
 namespace DrawingSpace.Core;
 
-public readonly record struct PointD(double X, double Y)
+public readonly record struct PointD(double X, double Y) : IFormattable
 {
     public static PointD Zero => default;
     [JsonIgnore] public bool IsFinite => double.IsFinite(X) && double.IsFinite(Y);
     [JsonIgnore] public double Length => Math.Sqrt(X * X + Y * Y);
     [JsonIgnore] public PointD Normalized => Length < 1e-9 ? Zero : this / Length;
+
+    // The synthesized record formatter visits every public property, including
+    // Normalized, which is another PointD. Print coordinates only to avoid recursion.
+    public override string ToString() => ToString("R", CultureInfo.InvariantCulture);
+    public string ToString(string? format, IFormatProvider? formatProvider)
+    {
+        var provider = formatProvider ?? CultureInfo.InvariantCulture;
+        return $"({X.ToString(format ?? "R", provider)}, {Y.ToString(format ?? "R", provider)})";
+    }
+
     public double Distance(PointD other) => (this - other).Length;
     public double Manhattan(PointD other) => Math.Abs(X - other.X) + Math.Abs(Y - other.Y);
     public static PointD operator +(PointD a, PointD b) => new(a.X + b.X, a.Y + b.Y);
