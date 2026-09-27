@@ -16,18 +16,29 @@ public sealed class OrthogonalRouter
         var target = page.Find(connector.TargetId);
         var from = source?.Bounds.Center ?? connector.Start;
         var to = target?.Bounds.Center ?? connector.End;
-        var sourceSide = connector.SourcePort == PortSide.Auto ? Facing(from, to) : connector.SourcePort;
-        var targetSide = connector.TargetPort == PortSide.Auto ? Facing(to, from) : connector.TargetPort;
+        var sourceSide = connector.SourcePort;
+        var targetSide = connector.TargetPort;
         if (source == target && source is not null && connector.SourcePort == PortSide.Auto && connector.TargetPort == PortSide.Auto)
         {
             sourceSide = PortSide.East;
             targetSide = PortSide.South;
         }
-        var a = source?.Port(sourceSide) ?? connector.Start;
-        var b = target?.Port(targetSide) ?? connector.End;
-        if (connector.Kind == ConnectorKind.Straight) return new([a, b], true);
-        var start = source is null ? a : a + Direction(sourceSide).Rotate(source.Rotation, PointD.Zero) * (Clearance + 8);
-        var end = target is null ? b : b + Direction(targetSide).Rotate(target.Rotation, PointD.Zero) * (Clearance + 8);
+        var sourceEndpoint = ConnectionEndpoints.Resolve(source, connector.SourcePointId, sourceSide, connector.Start, to);
+        var targetEndpoint = ConnectionEndpoints.Resolve(target, connector.TargetPointId, targetSide, connector.End, from);
+        var a = sourceEndpoint.Position; var b = targetEndpoint.Position;
+        if (connector.Kind == ConnectorKind.Straight) return new(Simplify(new[] { a }.Concat(connector.Waypoints).Append(b)), true);
+        var start = source is null ? a : a + sourceEndpoint.Direction * (Clearance + 8);
+        var end = target is null ? b : b + targetEndpoint.Direction * (Clearance + 8);
+        if (connector.Waypoints.Count > 0)
+        {
+            var points = new List<PointD> { a, start }; var allClear = true; var current = start;
+            foreach (var waypoint in connector.Waypoints.Append(end))
+            {
+                var local = new Connector { Start = current, End = waypoint, Kind = ConnectorKind.Orthogonal };
+                var section = Route(page, local); points.AddRange(section.Points); allClear &= section.IsObstacleFree; current = waypoint;
+            }
+            points.Add(b); return new(Simplify(points), allClear);
+        }
         var corridor = RectD.FromPoints(start, end).Inflate(256);
         var all = page.Shapes.Where(s => page.IsVisible(s.LayerId) && s.Kind is not ShapeKind.Text and not ShapeKind.Container and not ShapeKind.Annotation)
             .Select(s => s.WorldBounds.Inflate(Clearance)).Where(r => r.Intersects(corridor)).ToArray();

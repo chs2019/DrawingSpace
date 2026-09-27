@@ -24,4 +24,5 @@
     <None Include="Vendor/LICENSE.txt" Pack="true" PackagePath="licenses/RichTextKit.txt" />
     <None Include="Vendor/NOTICE.md" Pack="true" PackagePath="licenses/RichTextKit-NOTICE.md" />
   </ItemGroup>
+<ItemGroup><None Update="LICENSE.Apache-2.0.txt" Pack="true" PackagePath="licenses/" /><None Include="../../THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="licenses/" /></ItemGroup>
 </Project>

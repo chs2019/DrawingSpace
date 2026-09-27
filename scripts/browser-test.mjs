@@ -91,10 +91,10 @@ try {
     const labels = await page.evaluate(svg => {
       const document = new DOMParser().parseFromString(svg, 'image/svg+xml');
       if (document.querySelector('parsererror')) throw new Error('SVG is not well-formed XML');
-      return [...document.querySelectorAll('text')].map(node => {
+      return [...document.querySelectorAll('[aria-label]')].map(node => node.getAttribute('aria-label')).concat([...document.querySelectorAll('text')].map(node => {
         const spans = [...node.querySelectorAll('tspan')];
         return spans.length ? spans.map(span => span.textContent).join(' ') : node.textContent;
-      });
+      }));
     }, text);
     assert.ok(labels.includes('Ready for review'), 'The exported SVG lost the edited label');
   });
@@ -102,6 +102,83 @@ try {
     await until(s => s.status.includes('Exported') || s.status.includes('saved'), 'No completed operation status');
     await page.waitForTimeout(1200); await page.reload({ waitUntil: 'domcontentloaded', timeout: 120000 });
     await until(s => s.ready && s.nodes === 14 && s.shapes.some(n => n.text === 'Ready for review'), 'Recovery did not restore the edited drawing', 120000);
+  });
+
+  async function enter(name, value) { await click(name); await page.keyboard.press('Control+a'); await page.keyboard.type(value); }
+  async function selectLabel(label) {
+    const state = await snapshot(); const shape = state.shapes.find(s => s.text === label); assert.ok(shape, `Missing shape ${label}`);
+    const point = center(state, shape); await page.mouse.click(point.x, point.y);
+    return await until(s => s.shapes.some(n => n.id === shape.id && n.selected), 'Could not select shape');
+  }
+  function screen(state, point) { return { x: state.canvasX + state.panX + point.x * state.zoom, y: state.canvasY + state.panY + point.y * state.zoom }; }
+  async function drag(a, b) { await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(b.x, b.y, {steps: 10}); await page.mouse.up(); }
+  await check('ShapeSheet pane recalculates geometry and supports exact undo', async () => {
+    await selectLabel('Ready for review'); const original = (await snapshot()).shapes.find(s => s.selected);
+    await click('Developer'); await click('ShapeSheet'); await enter('Cell formula', '3 in'); await click('Apply formula');
+    await until(s => s.shapes.some(n => n.id === original.id && Math.abs(n.width - 288) < .001), 'Formula did not resize the selected shape');
+    await page.screenshot({path: `${output}/screenshots/DrawingSpace-shapesheet.png`});
+    await click('Undo'); await until(s => s.shapes.some(n => n.id === original.id && Math.abs(n.width - original.width) < .001), 'Formula undo lost original size');
+    await click('Close task pane');
+  });
+  await check('Rich text pane applies a selected range rather than whole-shape formatting', async () => {
+    await selectLabel('Ready for review'); await click('Rich Text'); await click('Rich text content'); await page.keyboard.press('Control+a');
+    await click('Range bold'); await until(s => s.shapes.some(n => n.text === 'Ready for review' && n.rangeBold), 'Selected range was not formatted');
+    await page.screenshot({path: `${output}/screenshots/DrawingSpace-rich-text.png`}); await click('Close task pane');
+  });
+  await check('A real master can be created, inserted and undone through the UI', async () => {
+    await selectLabel('Ready for review'); await click('Masters'); await click('Create master from shape');
+    await enter('Master name', 'Approval master'); await page.keyboard.press('Enter');
+    await until(s => s.masters === 1, 'Master creation did not commit');
+    const count = (await snapshot()).nodes; await click('Insert master Approval master');
+    await until(s => s.nodes === count + 1 && s.shapes.some(n => n.selected && n.masterId), 'Master did not insert');
+    await click('Undo'); await until(s => s.nodes === count && s.masters === 1, 'Master insertion did not undo independently');
+    await click('Close task pane');
+  });
+  await check('Semantic container movement preserves its members and undo', async () => {
+    const initial = await selectLabel('Ready for review'); const child = initial.shapes.find(s => s.selected);
+    await click('Containers'); await click('Container around selection');
+    const state = await until(s => s.shapes.some(n => n.id === child.id && n.containerId), 'Container membership was not assigned');
+    const container = state.shapes.find(s => s.selected); assert.ok(container);
+    const a = screen(state, {x:container.x + container.width / 2, y:container.y + 12});
+    await drag(a, {x:a.x + 45, y:a.y + 30});
+    await until(s => s.shapes.some(n => n.id === child.id && n.x !== child.x), 'Container drag did not move its member');
+    await click('Undo'); await until(s => s.shapes.some(n => n.id === child.id && Math.abs(n.x - child.x) < .001), 'Container movement undo failed');
+    await click('Undo'); await until(s => !s.shapes.find(n => n.id === child.id)?.containerId, 'Container insertion undo failed');
+    await click('Close task pane');
+  });
+  await check('Connector endpoint can be detached with pointer drag and restored by undo', async () => {
+    const state = await snapshot(); const edge = state.connectors[0]; assert.ok(edge?.route?.length >= 2);
+    const p = {x:(edge.route[0].x + edge.route[1].x)/2,y:(edge.route[0].y + edge.route[1].y)/2}; const hit = screen(state,p);
+    await page.mouse.click(hit.x,hit.y); const selected = await until(s => s.connectors.some(c => c.id === edge.id && c.selected), 'Connector was not selected');
+    const last = edge.route.at(-1); const a = screen(selected,last); const b = screen(selected,{x:900,y:650}); await drag(a,b);
+    await until(s => s.connectors.some(c => c.id === edge.id && c.targetId === null), 'Endpoint stayed attached after drag');
+    await click('Undo'); await until(s => s.connectors.some(c => c.id === edge.id && c.targetId === edge.targetId), 'Endpoint undo did not restore attachment');
+  });
+  await check('Alt-drag inserts a route waypoint and it can be removed with Shift-click', async () => {
+    const state = await snapshot(); const edge = state.connectors.find(c => c.selected); assert.ok(edge);
+    const p = {x:(edge.route[0].x + edge.route[1].x)/2,y:(edge.route[0].y + edge.route[1].y)/2}; const a = screen(state,p);
+    await page.keyboard.down('Alt'); await drag(a,{x:a.x+45,y:a.y+12}); await page.keyboard.up('Alt');
+    const after = await until(s => s.connectors.some(c => c.id === edge.id && c.waypointCount > 0), 'Waypoint was not inserted');
+    const point = screen(after,after.connectors.find(c => c.id === edge.id).waypoints[0]);
+    await page.keyboard.down('Shift'); await page.mouse.click(point.x,point.y); await page.keyboard.up('Shift');
+    await until(s => s.connectors.some(c => c.id === edge.id && c.waypointCount === 0), 'Waypoint was not removed');
+  });
+  await check('VSDX export and binary file-picker import round-trip the live drawing', async () => {
+    await click('File'); const downloadPromise = page.waitForEvent('download'); await click('VSDX'); const download = await downloadPromise;
+    const bytes = await fs.readFile(await download.path()); assert.equal(bytes[0],0x50); assert.equal(bytes[1],0x4b);
+    const saved = page.waitForEvent('download'); await click('Save'); await saved; await until(s => !s.dirty, 'Save did not mark the current revision');
+    const count = (await snapshot()).nodes; const chooserPromise = page.waitForEvent('filechooser'); await click('Open');
+    const chooser = await chooserPromise; await chooser.setFiles({name:'roundtrip.vsdx',mimeType:'application/vnd.ms-visio.drawing',buffer:bytes});
+    await until(s => s.nodes === count && s.status.startsWith('Opened roundtrip.vsdx'), 'Binary Visio file did not open');
+    assert.ok((await snapshot()).shapes.some(s => s.text === 'Ready for review'));
+    await page.screenshot({path: `${output}/screenshots/DrawingSpace-visio-import.png`});
+  });
+  await check('VSSX import adds masters without replacing the current drawing', async () => {
+    const state = await snapshot(); const pending = page.waitForEvent('download'); await click('VSSX'); const download = await pending; const bytes = await fs.readFile(await download.path());
+    const chooserPromise = page.waitForEvent('filechooser'); await click('Open'); const chooser = await chooserPromise;
+    await chooser.setFiles({name:'library.vssx',mimeType:'application/vnd.ms-visio.stencil',buffer:bytes});
+    await until(s => s.masters > state.masters && s.nodes === state.nodes, 'Stencil library did not merge into the drawing');
+    await page.screenshot({path: `${output}/screenshots/DrawingSpace-master-library.png`});
   });
   assert.deepEqual(errors, [], 'The browser reported JavaScript or WebAssembly errors');
   console.log(`Validated ${results.length} browser scenarios at ${base}`);

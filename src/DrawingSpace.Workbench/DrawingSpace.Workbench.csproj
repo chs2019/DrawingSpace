@@ -6,5 +6,6 @@
     <UnoFeatures>SkiaRenderer;</UnoFeatures><IsPackable>true</IsPackable>
     <Description>A reusable Visio-style Uno diagram workbench with ribbon, stencils, property panes, pages and local-first storage services.</Description>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="../DrawingSpace.Editor/DrawingSpace.Editor.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../DrawingSpace.Editor/DrawingSpace.Editor.csproj" />  <ProjectReference Include="../DrawingSpace.Visio/DrawingSpace.Visio.csproj" />
+  </ItemGroup>
 </Project>

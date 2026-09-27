@@ -5,6 +5,7 @@ public sealed partial class DiagramWorkbench
     private static bool Down(VirtualKey key) => Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
     private void WorkbenchKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (XamlRoot is null) return;
         if (FocusManager.GetFocusedElement(XamlRoot) is TextBox or PasswordBox || Surface.IsTextEditing) return;
         var control = Down(VirtualKey.Control) || Down(VirtualKey.LeftWindows) || Down(VirtualKey.RightWindows);
         var shift = Down(VirtualKey.Shift);

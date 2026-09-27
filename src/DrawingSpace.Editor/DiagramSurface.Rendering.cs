@@ -18,7 +18,7 @@ public sealed partial class DiagramSurface
         background.Color = SKColor.Parse("#CACACA");
         canvas.DrawRect(4 / (float)viewport.Zoom, 4 / (float)viewport.Zoom, (float)page.Width, (float)page.Height, background);
         var visible = RectD.FromPoints(viewport.ToWorld(new(gutter, gutter)), viewport.ToWorld(new(area.Width, area.Height)));
-        Renderer.DrawPage(canvas, page, session.Revision, session.GridVisible && viewport.Zoom >= .35, visible);
+        Renderer.DrawDocumentPage(canvas, session.Document, page, session.Revision, session.GridVisible && viewport.Zoom >= .35, visible);
         if (_ghost is not null) { _ghost.Style.Opacity = .6; Renderer.DrawShape(canvas, _ghost); }
         if (_gesture == Gesture.Connect)
         {
@@ -35,7 +35,7 @@ public sealed partial class DiagramSurface
         using var white = new SKPaint { IsAntialias = true, Color = SKColors.White };
         foreach (var shape in session.SelectedShapes.Where(s => page.IsVisible(s.LayerId)))
         {
-            var corners = shape.Bounds.Corners.Select(p => viewport.ToScreen(p.Rotate(shape.Rotation, shape.Bounds.Center))).ToArray();
+            var corners = shape.WorldCorners.Select(viewport.ToScreen).ToArray();
             using var path = SceneRenderer.Polyline(corners.Append(corners[0]).ToArray()); canvas.DrawPath(path, outline);
             if (session.Page.IsLocked(shape)) continue;
             foreach (var handle in ShapeTransforms.Handles(shape))
@@ -66,8 +66,10 @@ public sealed partial class DiagramSurface
             if (!routes.TryGetValue(connector.Id, out var route)) continue;
             var points = route.Points.Select(viewport.ToScreen).ToArray();
             using var path = SceneRenderer.Polyline(points); outline.StrokeWidth = 3; outline.Color = SKColor.Parse("#AA5B9BD5"); canvas.DrawPath(path, outline); outline.StrokeWidth = 1.3f; outline.Color = SKColor.Parse("#5B9BD5");
+            if (points.Length == 0) continue;
             foreach (var p in new[] { points[0], points[^1] }) { canvas.DrawCircle((float)p.X, (float)p.Y, 4, white); canvas.DrawCircle((float)p.X, (float)p.Y, 4, outline); }
         }
+        DrawConnectorAdorners(canvas);
         if (_marquee is { } marquee)
         {
             var a = viewport.ToScreen(new(marquee.Left, marquee.Top)); var b = viewport.ToScreen(new(marquee.Right, marquee.Bottom));

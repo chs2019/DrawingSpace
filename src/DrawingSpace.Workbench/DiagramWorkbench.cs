@@ -128,6 +128,7 @@ public sealed partial class DiagramWorkbench : UserControl, IDisposable
     private async void RunAsync(Func<Task> action)
     {
         try { await action(); }
+        catch (OperationCanceledException) { ShowStatus("Cancelled"); }
         catch (Exception ex) { Console.Error.WriteLine(ex); ShowStatus(ex.Message, true); }
     }
     private async Task WriteRecoveryAsync()
@@ -183,7 +184,7 @@ public sealed partial class DiagramWorkbench : UserControl, IDisposable
     private void ShowPane(string pane)
     {
         Surface.FinishTextEdit(true); _pane = _pane == pane ? "" : pane;
-        _body.ColumnDefinitions[2].Width = new GridLength(_pane.Length == 0 ? 0 : 270);
+        _body.ColumnDefinitions[2].Width = new GridLength(_pane.Length == 0 ? 0 : _pane is "shapesheet" or "masters" or "richtext" or "connections" ? 330 : 285);
         _propertyScroll.Visibility = _pane.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         Refresh();
     }

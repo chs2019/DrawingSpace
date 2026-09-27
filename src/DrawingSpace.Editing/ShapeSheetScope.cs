@@ -57,6 +57,13 @@ public sealed class ShapeSheetScope(DiagramDocument document, DiagramPage page)
     {
         if (sheet.Equals("ParentShape", StringComparison.OrdinalIgnoreCase)) return page.Find(shape.FormulaParentId) ?? page.Find(shape.ContainerId);
         var id = sheet.StartsWith("Sheet.", StringComparison.OrdinalIgnoreCase) ? sheet[6..] : sheet;
+        if (shape.MasterInstanceId is { } instance)
+        {
+            var local = page.Shapes.FirstOrDefault(s => s.MasterInstanceId == instance &&
+                (s.MasterShapeId == id || MasterService.Template(document, s) is { } template &&
+                    (template.Id == id || template.VisioId?.ToString(CultureInfo.InvariantCulture) == id || template.Name.Equals(sheet, StringComparison.OrdinalIgnoreCase))));
+            if (local is not null) return local;
+        }
         return page.Shapes.FirstOrDefault(s => s.Id == id || s.VisioId?.ToString(CultureInfo.InvariantCulture) == id || s.Name.Equals(sheet, StringComparison.OrdinalIgnoreCase));
     }
 

@@ -23,6 +23,7 @@ public sealed partial class EditorSession
     public void RemoveFormula(string shapeId, string cellName)
     {
         var shape = Page.Find(shapeId) ?? throw new ArgumentException("Shape not found.", nameof(shapeId));
+        if (Page.IsLocked(shape)) throw new InvalidOperationException("The shape is locked.");
         Execute("Remove " + cellName + " formula", () =>
         {
             var key = shape.Cells.Keys.FirstOrDefault(k => k.Equals(cellName, StringComparison.OrdinalIgnoreCase));
@@ -41,15 +42,32 @@ public sealed partial class EditorSession
     public IReadOnlyList<Shape> InsertMaster(string masterId, PointD location)
     {
         var master = Document.Masters.FirstOrDefault(m => m.Id == masterId) ?? throw new ArgumentException("Master not found.", nameof(masterId));
-        var instances = MasterService.Instantiate(master, location);
+        var bundle = MasterService.InstantiateBundle(master, location);
         Execute("Insert " + master.Name, () =>
         {
             Selection.Clear();
-            foreach (var shape in instances) { shape.LayerId = Page.Layers[0].Id; Page.Shapes.Add(shape); Selection.Add(shape.Id); }
-            if (instances.Count > 1) GroupService.Create(Page, instances.Select(s => s.Id).ToArray());
-            if (instances.Count == 1) ContainerService.Assign(Page, instances[0], ContainerService.FindContainer(Page, instances[0])?.Id);
+            Page.Groups.AddRange(bundle.Groups);
+            foreach (var shape in bundle.Shapes) { shape.LayerId = Page.Layers[0].Id; Page.Shapes.Add(shape); Selection.Add(shape.Id); }
+            foreach (var edge in bundle.Connectors) { edge.LayerId = Page.Layers[0].Id; Page.Connectors.Add(edge); Selection.Add(edge.Id); }
+            // Placement is instance-local. Master Pin cells must not move a new instance back onto its template.
+            foreach (var shape in bundle.Shapes.Where(s => s.FormulaParentId is null))
+            {
+                var position = ShapeCoordinates.Read(Page, shape);
+                var x = shape.UsesVisioCoordinates ? position.PinX : shape.Bounds.Center.X / 96;
+                var y = shape.UsesVisioCoordinates ? position.PinY : (Page.Height - shape.Bounds.Center.Y) / 96;
+                shape.Cells["PinX"] = new() { Value = x.ToString("R", System.Globalization.CultureInfo.InvariantCulture), Unit = "IN" };
+                shape.Cells["PinY"] = new() { Value = y.ToString("R", System.Globalization.CultureInfo.InvariantCulture), Unit = "IN" };
+            }
+            if (bundle.Shapes.Count == 1) ContainerService.Assign(Page, bundle.Shapes[0], ContainerService.FindContainer(Page, bundle.Shapes[0])?.Id);
         });
-        return instances;
+        return bundle.Shapes;
+    }
+
+    public IReadOnlyList<DiagramMaster> ImportMasters(IEnumerable<DiagramMaster> masters)
+    {
+        IReadOnlyList<DiagramMaster> imported = [];
+        Execute("Import stencil masters", () => imported = MasterService.Import(Document, masters));
+        return imported;
     }
 
     public void UpdateMaster(string masterId, Action<DiagramMaster> update)
@@ -61,6 +79,7 @@ public sealed partial class EditorSession
     public void ResetMasterOverride(string shapeId, string property)
     {
         var shape = Page.Find(shapeId) ?? throw new ArgumentException("Shape not found.", nameof(shapeId));
+        if (Page.IsLocked(shape)) throw new InvalidOperationException("The shape is locked.");
         Execute("Restore inherited " + property, () =>
         {
             shape.LocalOverrides.RemoveAll(p => p.Equals(property, StringComparison.OrdinalIgnoreCase));
@@ -91,6 +110,7 @@ public sealed partial class EditorSession
     public void SetContainerMembership(string shapeId, string? containerId)
     {
         var shape = Page.Find(shapeId) ?? throw new ArgumentException("Shape not found.", nameof(shapeId));
+        if (Page.IsLocked(shape)) throw new InvalidOperationException("The shape is locked.");
         Execute("Change container membership", () =>
         {
             ContainerService.Assign(Page, shape, containerId);
@@ -143,6 +163,7 @@ public sealed partial class EditorSession
     public ConnectionPoint AddConnectionPoint(string shapeId, PointD world, PointD direction = default)
     {
         var shape = Page.Find(shapeId) ?? throw new ArgumentException("Shape not found.", nameof(shapeId));
+        if (Page.IsLocked(shape)) throw new InvalidOperationException("The shape is locked.");
         if (!shape.WorldMatrix.TryInvert(out var inverse)) throw new InvalidOperationException("Shape transform is singular.");
         var point = new ConnectionPoint { Position = inverse.Map(world), Direction = direction };
         Execute("Insert connection point", () =>
@@ -156,8 +177,13 @@ public sealed partial class EditorSession
     public void ReattachConnector(string connectorId, bool source, string? shapeId, PortSide port, string? pointId, PointD freePoint)
     {
         var connector = Page.Connectors.FirstOrDefault(c => c.Id == connectorId) ?? throw new ArgumentException("Connector not found.", nameof(connectorId));
+        if (Page.Layers.FirstOrDefault(l => l.Id == connector.LayerId)?.Locked == true) throw new InvalidOperationException("The connector layer is locked.");
         if (shapeId is not null && Page.Find(shapeId) is null) throw new ArgumentException("Target shape not found.", nameof(shapeId));
         if (pointId is not null && Page.Find(shapeId)?.ConnectionPoints.Any(p => p.Id == pointId) != true) throw new ArgumentException("Connection point not found.", nameof(pointId));
+        if (!freePoint.IsFinite) throw new ArgumentOutOfRangeException(nameof(freePoint));
+        if (shapeId is not null && Page.Find(shapeId) is { } attached && Page.IsLocked(attached)) throw new InvalidOperationException("The target shape is locked.");
+        if (pointId is not null && Page.Find(shapeId)?.ConnectionPoints.First(p => p.Id == pointId) is { } point && !(source ? point.Outgoing : point.Incoming))
+            throw new InvalidOperationException("The connection point does not accept this endpoint direction.");
         Execute("Reconnect endpoint", () =>
         {
             if (source) { connector.SourceId = shapeId; connector.SourcePort = port; connector.SourcePointId = pointId; connector.Start = freePoint; }
@@ -168,18 +194,30 @@ public sealed partial class EditorSession
     public void SetWaypoints(string connectorId, IEnumerable<PointD> waypoints)
     {
         var connector = Page.Connectors.FirstOrDefault(c => c.Id == connectorId) ?? throw new ArgumentException("Connector not found.", nameof(connectorId));
-        var points = waypoints.ToList();
+        if (Page.Layers.FirstOrDefault(l => l.Id == connector.LayerId)?.Locked == true) throw new InvalidOperationException("The connector layer is locked.");
+        ArgumentNullException.ThrowIfNull(waypoints);
+        var points = waypoints.Take(4097).ToList();
+        if (points.Count > 4096 || points.Any(p => !p.IsFinite)) throw new ArgumentException("Waypoints must be finite and within the 4096-point limit.", nameof(waypoints));
         Execute("Edit connector route", () => connector.Waypoints = points);
     }
 
     public void AddComment(string shapeId, string author, string text, string? threadId = null)
     {
         var shape = Page.Find(shapeId) ?? throw new ArgumentException("Shape not found.", nameof(shapeId));
+        ArgumentException.ThrowIfNullOrWhiteSpace(author); ArgumentException.ThrowIfNullOrWhiteSpace(text);
         Execute("Add comment", () =>
         {
             var thread = shape.Threads.FirstOrDefault(t => t.Id == threadId);
+            if (threadId is not null && thread is null) throw new ArgumentException("Comment thread not found.", nameof(threadId));
             if (thread is null) { thread = new(); shape.Threads.Add(thread); }
             thread.Messages.Add(new(Guid.NewGuid().ToString("N"), author, text, DateTimeOffset.UtcNow));
         });
+    }
+
+    public void ResolveComment(string shapeId, string threadId, bool resolved)
+    {
+        var shape = Page.Find(shapeId) ?? throw new ArgumentException("Shape not found.", nameof(shapeId));
+        var thread = shape.Threads.FirstOrDefault(t => t.Id == threadId) ?? throw new ArgumentException("Thread not found.", nameof(threadId));
+        Execute(resolved ? "Resolve comment" : "Reopen comment", () => thread.Resolved = resolved);
     }
 }

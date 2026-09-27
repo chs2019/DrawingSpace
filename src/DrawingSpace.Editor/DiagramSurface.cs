@@ -14,7 +14,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
         public Action<SKCanvas, Size>? Draw { get; set; }
         protected override void RenderOverride(SKCanvas canvas, Size area) => Draw?.Invoke(canvas, area);
     }
-    private enum Gesture { None, Move, Resize, Rotate, Marquee, Pan, Create, Connect, Pinch }
+    private enum Gesture { None, Move, Resize, Rotate, Marquee, Pan, Create, Connect, Pinch, ConnectorEndpoint, ConnectorWaypoint, ConnectorLabel }
     private readonly DrawingCanvas _canvas = new();
     private readonly Canvas _overlay = new();
     private readonly Dictionary<string, Shape> _originals = [];
@@ -87,7 +87,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
     {
         if (kind == ChangeKind.Document && Session?.IsInteracting != true)
         {
-            _gesture = Gesture.None; _originals.Clear(); _marquee = null; _snap = null; _created = null; _connectSource = null;
+            _gesture = Gesture.None; _originals.Clear(); _originalConnectors.Clear(); _editedConnectorId = null; _marquee = null; _snap = null; _created = null; _connectSource = null;
             ReleaseCaptures(); Renderer.ClearCache();
             if (_textEditor is not null) FinishTextEdit(false);
         }
@@ -112,7 +112,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
     public void SetGhost(Shape? shape) { _ghost = shape; Invalidate(); }
     public void CancelGesture()
     {
-        _gesture = Gesture.None; _originals.Clear(); _marquee = null; _snap = null; _created = null; _connectSource = null;
+        _gesture = Gesture.None; _originals.Clear(); _originalConnectors.Clear(); _editedConnectorId = null; _marquee = null; _snap = null; _created = null; _connectSource = null;
         if (Session?.IsInteracting == true) Session.Cancel();
         ReleaseCaptures(); Invalidate();
     }
@@ -165,6 +165,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
                 }
             }
         }
+        if (session.Tool == EditorTool.Pointer && TryBeginConnectorEdit(screen, world, e.KeyModifiers)) return;
         var hit = Renderer.HitShape(session.Page, world, 3 / session.Viewport.Zoom);
         if (session.Tool == EditorTool.Connector)
         {
@@ -184,7 +185,8 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
         {
             if (!session.Selection.Contains(hit.Id) || additive) session.Select(hit.Id, additive);
             if (!session.Selection.Contains(hit.Id) || session.Page.IsLocked(hit)) { _gesture = Gesture.None; return; }
-            foreach (var shape in session.EditableShapes) _originals[shape.Id] = shape.Clone();
+            foreach (var shape in session.TransformShapes) _originals[shape.Id] = shape.Clone();
+            CaptureConnectorTransforms();
             if (_originals.Count > 0)
             {
                 _startBounds = _originals.Values.Select(s => s.WorldBounds).Aggregate(RectD.Union);
@@ -223,7 +225,12 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
                     if (session.Page.Find(id) is not { } shape) continue;
                     shape.X = original.X + _snap.Delta.X; shape.Y = original.Y + _snap.Delta.Y;
                 }
+                MoveInternalConnectors(_snap.Delta);
                 session.Preview(); break;
+            case Gesture.ConnectorEndpoint:
+            case Gesture.ConnectorWaypoint:
+            case Gesture.ConnectorLabel:
+                MoveConnectorEdit(world); break;
             case Gesture.Resize:
                 var entry = _originals.First();
                 if (session.Page.Find(entry.Key) is { } resized) ShapeTransforms.Resize(resized, entry.Value, _handle, _startWorld, world, e.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift));
@@ -287,7 +294,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
         }
         if (gesture == Gesture.Create && _created is not null && screen.Distance(_startScreen) < 5) { _created.Width = _created.Kind == ShapeKind.Text ? 160 : 144; _created.Height = _created.Kind == ShapeKind.Text ? 40 : 64; }
         if (session.IsInteracting) session.Commit();
-        _originals.Clear(); _marquee = null; _snap = null; _connectSource = null; _created = null;
+        _originals.Clear(); _originalConnectors.Clear(); _editedConnectorId = null; _marquee = null; _snap = null; _connectSource = null; _created = null;
         ReleaseCaptures(); Invalidate(); e.Handled = true;
         if (gesture == Gesture.Create && createdId is not null && session.Page.Find(createdId)?.Kind == ShapeKind.Text) BeginTextEdit(createdId);
     }
@@ -309,7 +316,8 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
     private PointD RotationHandle(Shape shape)
     {
         var zoom = Session!.Viewport.Zoom;
-        var point = new PointD(shape.Bounds.Center.X, shape.Y - 25 / zoom).Rotate(shape.Rotation, shape.Bounds.Center);
+        var top = shape.Port(PortSide.North); var center = shape.WorldMatrix.Map(new PointD(.5, .5));
+        var point = top + (top - center).Normalized * (25 / zoom);
         return Session.Viewport.ToScreen(point);
     }
     private PointD AutoConnectPosition(Shape shape, PortSide side)

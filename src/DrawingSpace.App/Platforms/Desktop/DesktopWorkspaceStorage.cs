@@ -1,12 +1,13 @@
 using DrawingSpace.Documents;
 using DrawingSpace.Workbench;
+using DrawingSpace.Visio;
 using Windows.Storage;
 using Windows.Storage.Pickers;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace DrawingSpace.App;
 
-internal sealed class DesktopWorkspaceStorage : IWorkspaceStorage
+internal sealed class DesktopWorkspaceStorage : IWorkspaceStorage, IBinaryWorkspaceStorage
 {
     private static readonly string DirectoryPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DrawingSpace");
     private static string RecoveryPath => Path.Combine(DirectoryPath, "workspace.drawingspace.json");
@@ -27,6 +28,22 @@ internal sealed class DesktopWorkspaceStorage : IWorkspaceStorage
         var properties = await file.GetBasicPropertiesAsync();
         if (properties.Size > DocumentCodec.MaximumJsonLength) throw new InvalidDataException("The drawing exceeds the import size limit.");
         return (file.Name, await FileIO.ReadTextAsync(file));
+    }
+    public async Task<DrawingFile?> OpenFileAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var picker = new FileOpenPicker();
+        foreach (var extension in new[] { ".json", ".drawingspace", ".vsdx", ".vssx", ".vstx", ".vdx", ".vsd" }) picker.FileTypeFilter.Add(extension);
+        var file = await picker.PickSingleFileAsync(); if (file is null) return null;
+        using var input = await file.OpenStreamForReadAsync(); using var output = new MemoryStream();
+        var buffer = new byte[65536];
+        int read;
+        while ((read = await input.ReadAsync(buffer, cancellationToken)) != 0)
+        {
+            if (output.Length + read > DrawingFileCodec.MaximumFileBytes) throw new InvalidDataException("The drawing exceeds the 32 MiB file limit.");
+            output.Write(buffer, 0, read);
+        }
+        return new(file.Name, output.ToArray());
     }
     public async Task SaveAsync(string name, byte[] bytes, string contentType, CancellationToken cancellationToken = default)
     {

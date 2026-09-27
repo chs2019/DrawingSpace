@@ -1,4 +1,5 @@
 using System.Text;
+using DrawingSpace.Visio;
 
 namespace DrawingSpace.Workbench;
 
@@ -11,7 +12,7 @@ public sealed partial class DiagramWorkbench
         var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Save your drawing?", Content = "This drawing has unsaved changes. Save a file before replacing it, or discard the changes. The local recovery copy will be replaced by the new drawing.", PrimaryButtonText = "Save", SecondaryButtonText = "Discard", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
         var result = await dialog.ShowAsync();
         if (result == ContentDialogResult.None) return false;
-        if (result == ContentDialogResult.Primary) await SaveAsync();
+        if (result == ContentDialogResult.Primary) { await SaveAsync(); if (Session.IsDirty) return false; }
         return true;
     }
     private async Task NewAsync(string template)
@@ -19,20 +20,57 @@ public sealed partial class DiagramWorkbench
         if (!await ConfirmReplaceAsync()) return;
         Session.Load(SampleDiagrams.Create(template)); Session.Tool = EditorTool.Pointer; Surface.Fit(); ShowStatus("New drawing");
     }
+    private bool _openingFile;
+    private IReadOnlyList<VisioDiagnostic> _importDiagnostics = [];
     private async Task OpenAsync()
     {
-        // Open the picker before replacing the current document; cancellation is non-destructive.
-        var file = await _storage.OpenAsync(); if (file is null) return;
-        var document = DocumentCodec.Load(file.Value.Text);
-        if (!await ConfirmReplaceAsync()) return;
-        Session.Load(document); Surface.Fit(); ShowStatus("Opened " + file.Value.Name);
+        if (_openingFile) return;
+        _openingFile = true;
+        var originalDocument = Session.Document;
+        try
+        {
+            DrawingFile? file;
+            if (_storage is IBinaryWorkspaceStorage binary) file = await binary.OpenFileAsync();
+            else
+            {
+                var legacy = await _storage.OpenAsync();
+                file = legacy is { } value ? new(value.Name, Encoding.UTF8.GetBytes(value.Text)) : null;
+            }
+            if (file is null) return;
+            var result = DrawingFileCodec.Read(file);
+            if (!ReferenceEquals(Session.Document, originalDocument)) throw new InvalidOperationException("The active document changed while the file picker was open. Open the file again.");
+            if (Path.GetExtension(file.Name).Equals(".vssx", StringComparison.OrdinalIgnoreCase))
+            {
+                var imported = Session.ImportMasters(result.Document.Masters);
+                _importDiagnostics = result.Diagnostics; if (_pane != "masters") ShowPane("masters");
+                ShowStatus($"Imported {imported.Count} stencil masters; {result.Diagnostics.Count} import diagnostics");
+                return;
+            }
+            if (!await ConfirmReplaceAsync()) return;
+            Session.Load(result.Document); Session.Tool = EditorTool.Pointer; _importDiagnostics = result.Diagnostics;
+            Surface.Fit();
+            ShowStatus($"Opened {file.Name}" + (result.Diagnostics.Count > 0 ? $" — {result.Diagnostics.Count} import diagnostics" : ""));
+        }
+        finally { _openingFile = false; }
+    }
+    private async Task ExportVisioAsync(VisioPackageKind kind)
+    {
+        Surface.FinishTextEdit(true);
+        var result = VisioWriter.Write(Session.Document, new() { Kind = kind });
+        var extension = kind switch { VisioPackageKind.Stencil => "vssx", VisioPackageKind.Template => "vstx", _ => "vsdx" };
+        await _storage.SaveAsync(SafeName(Session.Document.Title) + "." + extension, result.Bytes, DrawingFileCodec.ContentType(kind));
+        _importDiagnostics = result.Diagnostics;
+        ShowStatus($"Exported {extension.ToUpperInvariant()}" + (result.Diagnostics.Count > 0 ? $" — {result.Diagnostics.Count} compatibility diagnostics" : ""));
     }
     private async Task SaveAsync()
     {
         Surface.FinishTextEdit(true);
-        var json = DocumentCodec.Save(Session.Document);
+        var document = Session.Document; var revision = Session.Revision;
+        var json = DocumentCodec.Save(document);
         await _storage.SaveAsync(SafeName(Session.Document.Title) + ".drawingspace.json", Encoding.UTF8.GetBytes(json), "application/json");
-        await _storage.SaveRecoveryAsync(json); Session.MarkSaved(); ShowStatus("Drawing saved");
+        if (ReferenceEquals(document, Session.Document) && revision == Session.Revision)
+        { await _storage.SaveRecoveryAsync(json); if (ReferenceEquals(document, Session.Document) && revision == Session.Revision) Session.MarkSaved(); }
+        ShowStatus(ReferenceEquals(document, Session.Document) && revision == Session.Revision ? "Drawing saved" : "Snapshot saved; newer changes remain unsaved");
     }
     private async Task ExportAsync(string format)
     {
@@ -40,8 +78,8 @@ public sealed partial class DiagramWorkbench
         var renderer = Surface.Renderer;
         var bytes = format switch
         {
-            "svg" => Encoding.UTF8.GetBytes(renderer.ExportSvg(Session.Page)),
-            "png" => renderer.ExportPng(Session.Page),
+            "svg" => Encoding.UTF8.GetBytes(renderer.ExportSvg(Session.Document, Session.Page)),
+            "png" => renderer.ExportPng(Session.Document, Session.Page),
             "pdf" => renderer.ExportPdf(Session.Document),
             _ => throw new ArgumentOutOfRangeException(nameof(format))
         };
@@ -115,7 +153,7 @@ public sealed partial class DiagramWorkbench
         var id = Session.SelectedShapes[0].Id;
         var text = await PromptAsync("New comment", "Comment", "", true);
         if (string.IsNullOrWhiteSpace(text)) return;
-        if (Session.Page.Find(id) is { } shape) Session.Execute("Add comment", () => shape.Comments.Add(text.Trim()));
+        if (Session.Page.Find(id) is not null) Session.AddComment(id, "You", text.Trim());
         if (_pane != "comments") ShowPane("comments");
     }
     private async Task ExportDataAsync()

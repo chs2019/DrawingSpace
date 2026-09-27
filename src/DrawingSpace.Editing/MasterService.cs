@@ -3,7 +3,7 @@ using DrawingSpace.Documents;
 
 namespace DrawingSpace.Editing;
 
-public static class MasterService
+public static partial class MasterService
 {
     private sealed record Property(string Name, Func<Shape, object?> Get, Action<Shape, Shape> Copy);
     private static readonly Property[] Properties =
@@ -53,16 +53,5 @@ public static class MasterService
         return new() { Name = name, Shape = template };
     }
     public static IReadOnlyList<Shape> Instantiate(DiagramMaster master, PointD position)
-    {
-        var templates = master.Children.Prepend(master.Shape).ToArray();
-        var map = templates.ToDictionary(s => s.Id, _ => Guid.NewGuid().ToString("N"));
-        var delta = position - new PointD(master.Shape.X, master.Shape.Y);
-        return templates.Select(template =>
-        {
-            var shape = template.Clone(true); shape.Id = map[template.Id]; shape.X += delta.X; shape.Y += delta.Y;
-            shape.MasterId = master.Id; shape.MasterShapeId = template.Id; shape.LocalOverrides.Clear(); shape.GroupId = null;
-            shape.ContainerId = template.ContainerId is not null && map.TryGetValue(template.ContainerId, out var parent) ? parent : null;
-            shape.Cells.Clear(); shape.Threads.Clear(); shape.Comments.Clear(); return shape;
-        }).ToArray();
-    }
+        => InstantiateBundle(master, position).Shapes;
 }
