@@ -1,0 +1,46 @@
+name: Text engine port
+on:
+  push:
+    branches: [feat/visio-parity]
+    paths: ['scripts/dev/vendor-richtextkit.py', 'src/DrawingSpace.Text/DrawingSpace.Text.csproj']
+permissions:
+  contents: read
+concurrency:
+  group: text-engine-port
+  cancel-in-progress: false
+jobs:
+  port:
+    if: github.repository == 'wieslawsoltes/DrawingSpace'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Vendor pinned source and preserve upstream licensing
+        run: |
+          set -euo pipefail
+          python3 scripts/dev/vendor-richtextkit.py
+          git add src/DrawingSpace.Text/Vendor
+          if ! git diff --cached --quiet; then
+            git config user.name 'DrawingSpace integration'
+            git config user.email 'wieslawsoltes@users.noreply.github.com'
+            git commit -m 'build: vendor pinned Apache-2.0 rich text layout source without font assets'
+            git push origin HEAD:refs/heads/feat/visio-parity
+          fi
+          git log -1 --format='%H %T'
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Compile source against SkiaSharp 3 and matching HarfBuzz
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          dotnet build src/DrawingSpace.Text -c Release 2>&1 | tee artifacts/text-port.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: DrawingSpace-text-port-validation
+          path: artifacts/text-port.log
