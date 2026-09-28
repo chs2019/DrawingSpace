@@ -58,41 +58,6 @@ public sealed partial class DiagramWorkbench
         foreach (var diagnostic in Session.FormulaDiagnostics.Where(d => d.ShapeId == shape.Id).Take(20)) Paragraph(diagnostic.Cell + ": " + diagnostic.Message);
     }
 
-    private void BuildMastersPane()
-    {
-        _properties.Children.Add(Command("Create master from shape", OfficeIcon.Add, () => RunAsync(async () =>
-        {
-            if (Session.SelectedShapes.Count != 1) { ShowStatus("Select one shape to create a master."); return; }
-            var id = Session.SelectedShapes[0].Id;
-            var name = await PromptAsync("Create master", "Master name", Session.SelectedShapes[0].Name);
-            if (!string.IsNullOrWhiteSpace(name)) { _activeMasterId = Session.CreateMaster(id, name.Trim()).Id; Refresh(); }
-        })));
-        Paragraph("Open a VSSX file to add a stencil library without replacing this drawing. Insertions keep internal connectors and nested groups.");
-        if (Session.Document.Masters.Count == 0) { Paragraph("This document has no masters yet."); return; }
-        foreach (var master in Session.Document.Masters.Take(128))
-        {
-            var id = master.Id;
-            var select = new OfficeButton(master.Name, OfficeIcon.App, action: () => { _activeMasterId = id; Refresh(); }) { IsSelected = id == _activeMasterId };
-            var insert = new OfficeButton("Insert", OfficeIcon.Add, action: () => Guard(() => { Session.InsertMaster(id, Surface.ViewCenter); Surface.FocusCanvas(); }));
-            AutomationProperties.SetName(insert, "Insert master " + master.Name);
-            _properties.Children.Add(OfficeTheme.Row(select, insert));
-        }
-        var active = Session.Document.Masters.FirstOrDefault(m => m.Id == _activeMasterId);
-        if (active is null) return;
-        Section("Edit master: " + active.Name);
-        var label = OfficeTheme.Field(active.Shape.Text, "Master text"); _properties.Children.Add(label);
-        _properties.Children.Add(Command("Apply master text", OfficeIcon.Check, () => Session.UpdateMaster(active.Id, master => RichTextOperations.ReplaceAll(master.Shape, label.Text))));
-        Number("Master width", active.Shape.Width, value => Session.UpdateMaster(active.Id, m => m.Shape.Width = value), 1, 100000);
-        Number("Master height", active.Shape.Height, value => Session.UpdateMaster(active.Id, m => m.Shape.Height = value), 1, 100000);
-        var palette = new ColorPalette(); palette.ColorSelected += color => Guard(() => Session.UpdateMaster(active.Id, m => m.Shape.Style.Fill = color)); _properties.Children.Add(palette);
-        if (Session.SelectedShapes.Count == 1 && Session.SelectedShapes[0] is { MasterId: not null } instance)
-        {
-            Section("Local overrides");
-            foreach (var property in instance.LocalOverrides.ToArray())
-                _properties.Children.Add(Command("Reset " + property, OfficeIcon.Undo, () => Session.ResetMasterOverride(instance.Id, property)));
-        }
-    }
-
     private void BuildContainersPane()
     {
         _properties.Children.Add(Command("Container around selection", OfficeIcon.Group, () => Session.CreateContainer()));

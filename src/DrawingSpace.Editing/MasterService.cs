@@ -8,7 +8,7 @@ public static partial class MasterService
     private sealed record Property(string Name, Func<Shape, object?> Get, Action<Shape, Shape> Copy);
     private static readonly Property[] Properties =
     [
-        new("Kind", s => s.Kind, (a,b) => a.Kind = b.Kind), new("Text", s => s.Text, (a,b) => { a.Text = b.Text; a.TextSpans = b.TextSpans.Select(t => t.Clone()).ToList(); a.Paragraphs = b.Paragraphs.Select(p => p.Clone()).ToList(); }),
+        new("Kind", s => s.Kind, (a,b) => a.Kind = b.Kind), new("Text", s => s.Text, (a,b) => { a.Text = b.Text; a.TextSpans = b.TextSpans.Select(t => t.Clone()).ToList(); a.Paragraphs = b.Paragraphs.Select(p => p.Clone()).ToList(); a.TextBounds = b.TextBounds; a.TextRotation = b.TextRotation; }),
         new("Width", s => s.Width, (a,b) => a.Width = b.Width), new("Height", s => s.Height, (a,b) => a.Height = b.Height),
         new("Style.Fill", s => s.Style.Fill, (a,b) => a.Style.Fill = b.Style.Fill), new("Style.Stroke", s => s.Style.Stroke, (a,b) => a.Style.Stroke = b.Style.Stroke),
         new("Style.StrokeWidth", s => s.Style.StrokeWidth, (a,b) => a.Style.StrokeWidth = b.Style.StrokeWidth), new("Style.TextColor", s => s.Style.TextColor, (a,b) => a.Style.TextColor = b.Style.TextColor),
@@ -25,25 +25,35 @@ public static partial class MasterService
     }
     public static void CaptureLocalOverrides(DiagramDocument before, DiagramDocument current)
     {
+        if (current.Masters.Count == 0) return;
         var previous = before.Pages.SelectMany(p => p.Shapes).ToDictionary(s => s.Id);
         foreach (var instance in current.Pages.SelectMany(p => p.Shapes).Where(s => s.MasterId is not null))
         {
             if (!previous.TryGetValue(instance.Id, out var old) || old.MasterId != instance.MasterId) continue;
             foreach (var property in Properties)
-                if (!Equals(property.Get(old), property.Get(instance)) && !instance.LocalOverrides.Contains(property.Name, StringComparer.OrdinalIgnoreCase)) instance.LocalOverrides.Add(property.Name);
+                if ((property.Name == "Text" ? !ShapeResourceEquality.Text(old, instance) : !Equals(property.Get(old), property.Get(instance))) && !instance.LocalOverrides.Contains(property.Name, StringComparer.OrdinalIgnoreCase)) instance.LocalOverrides.Add(property.Name);
         }
     }
     public static void Refresh(DiagramDocument document)
     {
+        if (document.Masters.Count == 0) return;
+        var masters = document.Masters.ToDictionary(m => m.Id, StringComparer.Ordinal);
+        var templates = document.Masters.SelectMany(m => m.Children.Prepend(m.Shape).Select(s => (Master: m.Id, Shape: s)))
+            .ToDictionary(p => (p.Master, p.Shape.Id), p => p.Shape);
         foreach (var instance in document.Pages.SelectMany(p => p.Shapes))
         {
-            var template = Template(document, instance); if (template is null) continue;
+            if (instance.MasterId is not { } masterId || !masters.TryGetValue(masterId, out var master)) continue;
+            var template = instance.MasterShapeId is { } shapeId ? templates.GetValueOrDefault((masterId, shapeId)) : master.Shape;
+            if (template is null) continue;
             var center = instance.Bounds.Center;
             foreach (var property in Properties)
-                if (!(instance.UsesVisioCoordinates && property.Name is "Width" or "Height") && !instance.LocalOverrides.Contains(property.Name, StringComparer.OrdinalIgnoreCase)) property.Copy(instance, template);
+                if (!(instance.UsesVisioCoordinates && property.Name is "Width" or "Height")
+                    && !instance.LocalOverrides.Contains(property.Name, StringComparer.OrdinalIgnoreCase)
+                    && (property.Name == "Text" ? !ShapeResourceEquality.Text(instance, template) : !Equals(property.Get(instance), property.Get(template))))
+                    property.Copy(instance, template);
             instance.X = center.X - instance.Width / 2; instance.Y = center.Y - instance.Height / 2;
-            if (!instance.LocalOverrides.Contains("Geometry", StringComparer.OrdinalIgnoreCase)) instance.Geometry = template.Geometry.Select(g => g.Clone()).ToList();
-            if (!instance.LocalOverrides.Contains("ConnectionPoints", StringComparer.OrdinalIgnoreCase)) instance.ConnectionPoints = template.ConnectionPoints.Select(p => p.Clone()).ToList();
+            if (!instance.LocalOverrides.Contains("Geometry", StringComparer.OrdinalIgnoreCase) && !ShapeResourceEquality.Geometry(instance, template)) instance.Geometry = template.Geometry.Select(g => g.Clone()).ToList();
+            if (!instance.LocalOverrides.Contains("ConnectionPoints", StringComparer.OrdinalIgnoreCase) && !ShapeResourceEquality.Ports(instance, template)) instance.ConnectionPoints = template.ConnectionPoints.Select(p => p.Clone()).ToList();
         }
     }
     public static DiagramMaster Create(Shape source, string name)

@@ -162,6 +162,9 @@ public sealed partial class EditorSession
             MasterId = shape.MasterId, MasterShapeId = shape.MasterShapeId, MasterInstanceId = shape.MasterInstanceId, ContainerId = shape.ContainerId,
             UsesVisioCoordinates = shape.UsesVisioCoordinates, FormulaParentId = shape.FormulaParentId, CoordinateWidth = shape.CoordinateWidth, CoordinateHeight = shape.CoordinateHeight, IsGroupAnchor = shape.IsGroupAnchor,
             Style = shape.Style.Clone(), Data = new(shape.Data), VisioId = shape.VisioId, LocalOverrides = [.. shape.LocalOverrides],
+            TextBounds = shape.TextBounds, TextRotation = shape.TextRotation,
+            TextSpans = shape.MasterId is null ? [] : shape.TextSpans.Select(s => s.Clone()).ToList(),
+            Paragraphs = shape.MasterId is null ? [] : shape.Paragraphs.Select(p => p.Clone()).ToList(),
             Cells = shape.Cells.ToDictionary(p => p.Key, p => p.Value.Clone(), StringComparer.OrdinalIgnoreCase)
         };
         return new()

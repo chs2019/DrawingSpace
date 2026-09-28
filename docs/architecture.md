@@ -21,7 +21,7 @@ Undo/redo replaces model instances. Controls must resolve shapes by stable ID af
 
 `ShapeGeometry` creates the same original Skia paths for the editor, stencil thumbnails, hit tests, and SVG export. Shape-local geometry is rotated about the shape center. The renderer culls shapes outside the visible world rectangle; connector routes are cached by page identity and session revision. Transient selections, resize handles, marquee rectangles, port indicators, and alignment guides are drawn in screen space so their hit targets do not shrink with zoom.
 
-The engine is not a retained million-object scene graph. Moving a shape invalidates page routes, and selection/hit tests use linear scans. The visibility router bounds its obstacle set. These choices are explicit alpha trade-offs, not large-diagram scalability claims.
+The engine is not a retained million-object scene graph. Moving a shape invalidates page routes, and indexed pointer hit testing narrows candidates with a bounded page/revision cache. The visibility router bounds its obstacle set. These choices are explicit alpha trade-offs, not large-diagram scalability claims.
 
 ## Connector routing
 
@@ -29,7 +29,7 @@ Attached endpoints are shape IDs plus cardinal ports, not copied endpoint coordi
 
 ## Fonts
 
-The host configures the UI with Uno's Open Sans font manifest and loads four static Open Sans faces into the Skia renderer. This avoids platform-dependent monospace fallbacks and preserves real bold/italic variants. Font installation is a host concern; `SceneRenderer.SetTypefaces` transfers ownership of the supplied typefaces to the renderer. The simple text layout is not a full rich-text or complex-script shaping engine.
+The host configures the UI with Uno's Open Sans font manifest and loads four static Open Sans faces into the Skia renderer. This avoids platform-dependent monospace fallbacks and preserves real bold/italic variants. Font installation is a host concern; `SceneRenderer.SetTypefaces` transfers ownership of the supplied typefaces to the renderer. Shape text uses the attributed RichTextKit/HarfBuzz layout engine for spans, paragraphs, bidi and shaping. Connector-label text currently retains a simpler path.
 
 ## Persistence and services
 
@@ -42,10 +42,14 @@ The host configures the UI with Uno's Open Sans font manifest and loads four sta
 Unit tests exercise headless geometry, documents, routing, history, and native Skia export. Browser tests observe read-only diagnostics and send actual pointer/keyboard events. CI publishes screenshots and reports. Pages consumes only a successful main-branch Build artifact and checks its recorded commit before deployment; public-site tests verify the deployed app independently of the local test server.
 
 
-## Feature-branch extensions
+## Extended diagram semantics
 
 The model now carries ShapeSheet cells, local overrides, master/template/instance identities, affine frames, nested group anchors, semantic containment, rich-text spans/paragraphs, custom ports and preserved Visio package metadata. `MasterBundle` makes insertion of shapes, connectors and groups one transaction. Formula scope resolves numeric master Sheet references within an instance before searching a page.
 
 `DrawingSpace.Visio` implements bounded file detection and OPC interchange. `IBinaryWorkspaceStorage` adds byte-based file picking without changing the existing storage contract. `DrawingSpace.Text` owns a bounded layout LRU; `SceneRenderer` borrows layouts and owns font/image/render caches. Text-layout cache keys omit world translation but include text/style/paragraph/box state. Affine geometry and background composition are shared by the editor and exported pages.
 
 The canvas captures an immutable gesture snapshot for each edited shape/connector and updates a document preview during pointer moves. Endpoint/waypoint/label changes commit once on release; cancellation restores the transaction snapshot. Browser diagnostics expose read-only model observations and control bounds, including popup contents, only with `?test=1`.
+
+## Master authoring and spatial snapshots
+
+[MasterAuthoring](masters.md) captures connected selections and materializes inherited definitions for detachment; EditorSession owns transaction/rollback. [RoutingScene and SpatialBoundsIndex](performance.md) isolate immutable geometric snapshots from mutable documents. Route batches share the scene, while hit/culling indexes use revision invalidation and retain painter order. No graphics, mutable text or formula resources are shared unsafely.

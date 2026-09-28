@@ -105,7 +105,7 @@ public sealed partial class DiagramSurface
         {
             case Gesture.ConnectorEndpoint:
                 var target = ConnectionEndpoints.Hit(session.Page, world, 14 / session.Viewport.Zoom, _editingSource);
-                if (target is null && Renderer.HitShape(session.Page, world) is { } shape && !session.Page.IsLocked(shape))
+                if (target is null && Renderer.HitShape(session.Page, world, revision: session.Revision) is { } shape && !session.Page.IsLocked(shape))
                     target = ConnectionEndpoints.Resolve(shape, null, NearestPort(shape, world), world, world);
                 ConnectionEndpoints.Attach(edge, _editingSource, target, world); break;
             case Gesture.ConnectorWaypoint:

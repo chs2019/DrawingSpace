@@ -31,5 +31,15 @@ public readonly record struct MatrixD(double A, double B, double C, double D, do
 
 public static class MatrixBoundsExtensions
 {
-    public static RectD Map(this MatrixD matrix, RectD bounds) => RectD.Bounds(bounds.Corners.Select(matrix.Map));
+    public static RectD Map(this MatrixD matrix, RectD bounds)
+    {
+        var a = matrix.Map(new PointD(bounds.Left, bounds.Top));
+        var b = matrix.Map(new PointD(bounds.Right, bounds.Top));
+        var c = matrix.Map(new PointD(bounds.Right, bounds.Bottom));
+        var d = matrix.Map(new PointD(bounds.Left, bounds.Bottom));
+        var left = Math.Min(Math.Min(a.X, b.X), Math.Min(c.X, d.X));
+        var top = Math.Min(Math.Min(a.Y, b.Y), Math.Min(c.Y, d.Y));
+        return new(left, top, Math.Max(Math.Max(a.X, b.X), Math.Max(c.X, d.X)) - left,
+            Math.Max(Math.Max(a.Y, b.Y), Math.Max(c.Y, d.Y)) - top);
+    }
 }

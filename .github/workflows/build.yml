@@ -79,6 +79,9 @@ jobs:
             artifacts/advanced-results.json
             artifacts/advanced-snapshot.json
             artifacts/advanced-console.log
+            artifacts/master-results.json
+            artifacts/master-snapshot.json
+            artifacts/master-console.log
             artifacts/failure-*.json
             artifacts/server.log
           if-no-files-found: ignore

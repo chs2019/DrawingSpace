@@ -1,0 +1,37 @@
+{
+  "runtime": ".NET 10.0.12",
+  "os": "Debian GNU/Linux 13 (trixie)",
+  "shapeCount": 20000,
+  "connectorCount": 200,
+  "measurements": [
+    {
+      "milliseconds": 1769.5208,
+      "allocatedBytes": 2049763240,
+      "vertices": 400
+    },
+    {
+      "milliseconds": 1683.2872,
+      "allocatedBytes": 2049763240,
+      "vertices": 400
+    },
+    {
+      "milliseconds": 1725.7836,
+      "allocatedBytes": 2049763240,
+      "vertices": 400
+    },
+    {
+      "milliseconds": 1676.8411,
+      "allocatedBytes": 2049763240,
+      "vertices": 400
+    },
+    {
+      "milliseconds": 1636.4372,
+      "allocatedBytes": 2049763240,
+      "vertices": 400
+    }
+  ],
+  "note": "Includes one complete route batch. Deterministic sparse fixture; excludes rendering, ShapeSheet, transactions and input. Informational, not a timing gate.",
+  "sourceCommit": "eb648913c3cf28cce247d9591f5c0bf825bf6427",
+  "batchImplementation": "foreach (var edge in page.Connectors) router.Route(page, edge);",
+  "measuredAt": "2026-09-28"
+}

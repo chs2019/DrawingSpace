@@ -42,9 +42,27 @@ public static partial class MasterService
             RemapCells(edge.Cells, identities);
             return edge;
         }).ToArray();
-        if (shapes.Length > 1 || connectors.Length > 0)
+        var rootGroups = groups.Where(g => g.ParentId is null).ToArray();
+        var groupParents = groups.ToDictionary(g => g.Id, g => g.ParentId, StringComparer.Ordinal);
+        bool InRoot(string? groupId)
         {
-            var outer = new DiagramGroup { Name = master.Name };
+            if (rootGroups.Length != 1) return false;
+            var remaining = groups.Count + 1;
+            while (groupId is not null && remaining-- > 0)
+            {
+                if (groupId == rootGroups[0].Id) return true;
+                groupId = groupParents.GetValueOrDefault(groupId);
+            }
+            return false;
+        }
+        // An authored/imported master can already own its complete outer group. Do not
+        // wrap it in another group using the same anchor: Visio serializes an anchor as
+        // the group shape, so that would emit duplicate numeric shape identities.
+        var ownsOuterGroup = rootGroups.Length == 1 && rootGroups[0].AnchorShapeId == instanceId && shapes.All(s => InRoot(s.GroupId))
+            && connectors.All(c => InRoot(c.GroupId));
+        if ((shapes.Length > 1 || connectors.Length > 0) && !ownsOuterGroup)
+        {
+            var outer = new DiagramGroup { Name = master.Name, AnchorShapeId = master.Shape.IsGroupAnchor && !groups.Any(g => g.AnchorShapeId == instanceId) ? instanceId : null };
             foreach (var group in groups.Where(g => g.ParentId is null)) group.ParentId = outer.Id;
             foreach (var shape in shapes.Where(s => s.GroupId is null)) shape.GroupId = outer.Id;
             foreach (var edge in connectors.Where(c => c.GroupId is null)) edge.GroupId = outer.Id;
@@ -88,7 +106,6 @@ public static partial class MasterService
     private static void RemapCells(Dictionary<string, ShapeCell> cells, IReadOnlyDictionary<string, string> identities)
     {
         foreach (var cell in cells.Values)
-            foreach (var (oldId, newId) in identities)
-                cell.Formula = cell.Formula.Replace("Sheet." + oldId + "!", "Sheet." + newId + "!", StringComparison.OrdinalIgnoreCase);
+            cell.Formula = DrawingSpace.ShapeSheet.FormulaReferenceRewriter.RemapSheets(cell.Formula, identities);
     }
 }

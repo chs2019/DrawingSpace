@@ -26,14 +26,18 @@ public sealed partial class SceneRenderer : IDisposable
         foreach (var entry in _fonts.Values) { entry.Font.Dispose(); entry.Typeface.Dispose(); }
         _fonts.Clear(); _fallbackTypeface?.Dispose(); _fallbackTypeface = typeface;
     }
-    public void ClearCache() { _routePage = null; _routes.Clear(); }
+    public void ClearCache() { _routePage = null; _routes.Clear(); _shapeIndexes.Clear(); }
     public IReadOnlyDictionary<string, RouteResult> Routes(DiagramPage page, long revision, bool printing = false)
     {
         if (!ReferenceEquals(page, _routePage) || _revision != revision || _routePrinting != printing)
         {
             _routePage = page; _revision = revision; _routePrinting = printing; _routes.Clear();
             var visibleEdges = page.Connectors.Where(c => page.IsVisible(c.LayerId) && (!printing || page.IsPrintable(c.LayerId))).ToArray();
-            foreach (var edge in visibleEdges) _routes[edge.Id] = _router.Route(page, edge);
+            if (visibleEdges.Length != 0)
+            {
+                var scene = RoutingScene.Capture(page);
+                foreach (var edge in visibleEdges) _routes[edge.Id] = _router.RouteSnapshot(scene, edge);
+            }
             var analysis = LineJumpService.Analyze(visibleEdges, _routes);
             _jumps = analysis.Jumps; LineJumpBudgetExceeded = analysis.BudgetExceeded;
         }
@@ -60,12 +64,21 @@ public sealed partial class SceneRenderer : IDisposable
         if (grid) DrawGrid(canvas, page, visible ?? page.Bounds);
         var routes = Routes(page, revision, printing);
         bool Visible(string layer) => page.IsVisible(layer) && (!printing || page.IsPrintable(layer));
-        foreach (var shape in page.Shapes.Where(s => s.Kind == ShapeKind.Container && Visible(s.LayerId)))
-            if (visible is null || shape.WorldBounds.Intersects(visible.Value)) DrawShape(canvas, shape);
+        var candidates = visible is { } area && page.Shapes.Count > 128 ? VisibleShapes(page, revision, area) : null;
+        void DrawShapes(bool containers)
+        {
+            var count = candidates?.Count ?? page.Shapes.Count;
+            for (var i = 0; i < count; i++)
+            {
+                var shape = page.Shapes[candidates is null ? i : candidates[i]];
+                if ((shape.Kind == ShapeKind.Container) != containers || !Visible(shape.LayerId)) continue;
+                if (candidates is not null || visible is null || shape.WorldBounds.Intersects(visible.Value)) DrawShape(canvas, shape);
+            }
+        }
+        DrawShapes(true);
         foreach (var edge in page.Connectors.Where(c => Visible(c.LayerId)))
             if (routes.TryGetValue(edge.Id, out var route)) DrawConnector(canvas, edge, route);
-        foreach (var shape in page.Shapes.Where(s => s.Kind != ShapeKind.Container && Visible(s.LayerId)))
-            if (visible is null || shape.WorldBounds.Intersects(visible.Value)) DrawShape(canvas, shape);
+        DrawShapes(false);
     }
     private static void DrawGrid(SKCanvas canvas, DiagramPage page, RectD visible)
     {
@@ -173,8 +186,11 @@ public sealed partial class SceneRenderer : IDisposable
         using var paint = new SKPaint { IsAntialias = true, Color = SKColor.Parse(color), StrokeWidth = (float)width, Style = head == ArrowHead.Open ? SKPaintStyle.Stroke : SKPaintStyle.Fill };
         canvas.DrawPath(path, paint);
     }
-    public Shape? HitShape(DiagramPage page, PointD point, double tolerance = 2)
+    /// <summary>Supply the current geometry revision for spatially indexed hits; omit it for an uncached query.</summary>
+    public Shape? HitShape(DiagramPage page, PointD point, double tolerance = 2, long? revision = null)
     {
+        if (!point.IsFinite || !double.IsFinite(tolerance) || tolerance < 0) throw new ArgumentOutOfRangeException(nameof(tolerance));
+        if (revision is { } value && page.Shapes.Count > 128) return HitIndexedShape(page, point, value, tolerance);
         return page.Shapes.Where(s => s.Kind != ShapeKind.Container).Reverse().Concat(page.Shapes.Where(s => s.Kind == ShapeKind.Container).Reverse())
             .FirstOrDefault(s => page.IsVisible(s.LayerId) && ShapeGeometry.Contains(s, point, tolerance));
     }
@@ -194,6 +210,6 @@ public sealed partial class SceneRenderer : IDisposable
         foreach (var image in _images.Values) image.Image.Dispose(); _images.Clear();
         _fonts.Clear(); _fallbackTypeface?.Dispose(); _fallbackTypeface = null;
         foreach (var typeface in _fallbackStyles.Values.Distinct()) typeface.Dispose();
-        _fallbackStyles.Clear(); _routes.Clear();
+        _fallbackStyles.Clear(); _routes.Clear(); _shapeIndexes.Clear();
     }
 }
