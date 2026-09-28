@@ -15,7 +15,7 @@ public sealed partial class DiagramWorkbench
                 Command("Subtract", OfficeIcon.Group, () => ApplyGeometryOperation(ShapeBooleanOperation.Subtract), enabled: Multiple)),
             Stack(Command("Combine", OfficeIcon.Group, () => ApplyGeometryOperation(ShapeBooleanOperation.Combine), enabled: Multiple,
                     tooltip: "Exclusive-or filled areas; overlaps become holes."),
-                Command("Primary Shape", OfficeIcon.Select, ChooseGeometryPrimary, enabled: Multiple,
+                Command("Primary Shape", OfficeIcon.Pointer, ChooseGeometryPrimary, enabled: Multiple,
                     tooltip: "Choose the subtraction base and source of text/formatting. The backmost selected shape is the default."),
                 Command("Create Path Copy", OfficeIcon.Copy, CreateGeometryCopy,
                     enabled: () => Session.SelectedShapes.Count == 1 && !Session.IsInteracting,

@@ -89,7 +89,9 @@ public sealed class LineJumpSpatialTests
             ["second"] = new(new PointD[] { new(45, 0), new(45, 100) }, true),
             ["owner"] = new(new PointD[] { new(0, 50), new(100, 50) }, true)
         };
-        Assert.Equal(new PointD(55, 50), Assert.Single(LineJumpService.Analyze(edges, routes).Jumps["owner"]).Point);
+        var crossing = Assert.Single(LineJumpService.Analyze(edges, routes).Jumps["owner"]).Point;
+        // The ownership is exact; the computed position permits floating-point roundoff.
+        Assert.InRange(crossing.Distance(new PointD(55, 50)), 0, 1e-10);
     }
 
     [Theory]
