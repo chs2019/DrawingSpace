@@ -10,38 +10,43 @@ public sealed class OrthogonalRouter
     public double BendPenalty { get; init; } = 20;
     public int MaximumObstacles { get; init; } = 36;
 
-    public RouteResult Route(DiagramPage page, Connector connector)
+    public RouteResult Route(DiagramPage page, Connector connector) => RouteSnapshot(RoutingScene.Capture(page), connector);
+
+    /// <summary>Routes against one immutable geometry snapshot, reusable for every edge in a scene revision.</summary>
+    public RouteResult RouteSnapshot(RoutingScene scene, Connector connector)
     {
-        var source = page.Find(connector.SourceId);
-        var target = page.Find(connector.TargetId);
-        var from = source?.Bounds.Center ?? connector.Start;
-        var to = target?.Bounds.Center ?? connector.End;
-        var sourceSide = connector.SourcePort;
-        var targetSide = connector.TargetPort;
-        if (source == target && source is not null && connector.SourcePort == PortSide.Auto && connector.TargetPort == PortSide.Auto)
-        {
-            sourceSide = PortSide.East;
-            targetSide = PortSide.South;
-        }
-        var sourceEndpoint = ConnectionEndpoints.Resolve(source, connector.SourcePointId, sourceSide, connector.Start, to);
-        var targetEndpoint = ConnectionEndpoints.Resolve(target, connector.TargetPointId, targetSide, connector.End, from);
+        ArgumentNullException.ThrowIfNull(scene); ArgumentNullException.ThrowIfNull(connector);
+        if (!double.IsFinite(Clearance) || Clearance < 0 || Clearance > 4096
+            || !double.IsFinite(BendPenalty) || BendPenalty < 0 || MaximumObstacles is < 0 or > 128)
+            throw new InvalidOperationException("Invalid routing clearance, bend penalty or obstacle budget.");
+        var from = scene.Center(connector.SourceId, connector.Start);
+        var to = scene.Center(connector.TargetId, connector.End);
+        var sourceSide = connector.SourcePort; var targetSide = connector.TargetPort;
+        if (connector.SourceId == connector.TargetId && scene.Contains(connector.SourceId)
+            && sourceSide == PortSide.Auto && targetSide == PortSide.Auto)
+        { sourceSide = PortSide.East; targetSide = PortSide.South; }
+        var sourceEndpoint = scene.Resolve(connector.SourceId, connector.SourcePointId, sourceSide, connector.Start, to);
+        var targetEndpoint = scene.Resolve(connector.TargetId, connector.TargetPointId, targetSide, connector.End, from);
         var a = sourceEndpoint.Position; var b = targetEndpoint.Position;
         if (connector.Kind == ConnectorKind.Straight) return new(Simplify(new[] { a }.Concat(connector.Waypoints).Append(b)), true);
-        var start = source is null ? a : a + sourceEndpoint.Direction * (Clearance + 8);
-        var end = target is null ? b : b + targetEndpoint.Direction * (Clearance + 8);
-        if (connector.Waypoints.Count > 0)
+        var start = sourceEndpoint.ShapeId is null ? a : a + sourceEndpoint.Direction * (Clearance + 8);
+        var end = targetEndpoint.ShapeId is null ? b : b + targetEndpoint.Direction * (Clearance + 8);
+        var points = new List<PointD> { a, start }; var allClear = true; var current = start;
+        foreach (var waypoint in connector.Waypoints.Append(end))
         {
-            var points = new List<PointD> { a, start }; var allClear = true; var current = start;
-            foreach (var waypoint in connector.Waypoints.Append(end))
-            {
-                var local = new Connector { Start = current, End = waypoint, Kind = ConnectorKind.Orthogonal };
-                var section = Route(page, local); points.AddRange(section.Points); allClear &= section.IsObstacleFree; current = waypoint;
-            }
-            points.Add(b); return new(Simplify(points), allClear);
+            var section = RouteSection(scene, current, waypoint);
+            points.AddRange(section.Points); allClear &= section.IsObstacleFree; current = waypoint;
         }
+        points.Add(b); return new(Simplify(points), allClear);
+    }
+
+    private RouteResult RouteSection(RoutingScene scene, PointD start, PointD end)
+    {
         var corridor = RectD.FromPoints(start, end).Inflate(256);
-        var all = page.Shapes.Where(s => page.IsVisible(s.LayerId) && s.Kind is not ShapeKind.Text and not ShapeKind.Container and not ShapeKind.Annotation)
-            .Select(s => s.WorldBounds.Inflate(Clearance)).Where(r => r.Intersects(corridor)).ToArray();
+        var all = scene.Obstacles(corridor, Clearance);
+        // A clear axis-aligned segment is already optimal. Avoid constructing an A* grid.
+        if ((Math.Abs(start.X - end.X) < 1e-8 || Math.Abs(start.Y - end.Y) < 1e-8)
+            && !all.Any(r => CrossesInterior(start, end, r))) return new([start, end], true);
         var obstacles = all.OrderBy(r => r.Center.Distance(corridor.Center)).Take(MaximumObstacles).ToArray();
         var middle = Search(start, end, obstacles);
         if (middle is null)
@@ -55,8 +60,7 @@ public sealed class OrthogonalRouter
             };
             middle = alternatives.FirstOrDefault(p => Clear(p, all)) ?? alternatives[0];
         }
-        var clear = Clear(middle, all);
-        return new(Simplify(new[] { a }.Concat(middle).Append(b)), clear);
+        return new(middle, Clear(middle, all));
     }
 
     public static PortSide Facing(PointD from, PointD to)
@@ -88,6 +92,7 @@ public sealed class OrthogonalRouter
         costs[initial] = 0;
         queue.Enqueue(initial, start.Manhattan(end));
         var visited = new HashSet<(int Node, int Direction)>();
+        ReadOnlySpan<(int Dx, int Dy, int Direction)> directions = [(-1, 0, 1), (1, 0, 1), (0, -1, 2), (0, 1, 2)];
         while (queue.TryDequeue(out var state, out _))
         {
             if (!visited.Add(state)) continue;
@@ -101,7 +106,7 @@ public sealed class OrthogonalRouter
             var x = state.Node % nx;
             var y = state.Node / nx;
             var p = Point(state.Node);
-            foreach (var (dx, dy, direction) in new[] { (-1, 0, 1), (1, 0, 1), (0, -1, 2), (0, 1, 2) })
+            foreach (var (dx, dy, direction) in directions)
             {
                 var xx = x + dx; var yy = y + dy;
                 if (xx < 0 || xx >= nx || yy < 0 || yy >= ny) continue;

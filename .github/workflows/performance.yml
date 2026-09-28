@@ -1,0 +1,35 @@
+name: Performance
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: performance-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Compile deterministic headless benchmark
+        run: dotnet build tools/DrawingSpace.RoutingBenchmarks -c Release
+      - name: Measure route-batch time and allocations
+        shell: bash
+        run: |
+          mkdir -p artifacts/performance
+          dotnet run --project tools/DrawingSpace.RoutingBenchmarks -c Release --no-build > artifacts/performance/routing.json
+          git rev-parse HEAD > artifacts/performance/commit.txt
+          cat artifacts/performance/routing.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: DrawingSpace-routing-performance
+          path: artifacts/performance
+          retention-days: 30

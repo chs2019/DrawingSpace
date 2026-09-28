@@ -72,7 +72,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
         {
             if (Session is not { } session) return;
             var p = e.GetPosition(_canvas); var world = session.Viewport.ToWorld(new(p.X, p.Y));
-            var shape = Renderer.HitShape(session.Page, world);
+            var shape = Renderer.HitShape(session.Page, world, revision: session.Revision);
             var edge = shape is null ? Renderer.HitConnector(session.Page, world, session.Revision, 6 / session.Viewport.Zoom) : null;
             var id = shape?.Id ?? edge?.Id;
             if (id is not null) { BeginTextEdit(id); e.Handled = true; }
@@ -81,7 +81,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
         {
             if (Session is not { } session) return;
             var p = e.GetPosition(_canvas); var world = session.Viewport.ToWorld(new(p.X, p.Y));
-            var id = Renderer.HitShape(session.Page, world)?.Id ?? Renderer.HitConnector(session.Page, world, session.Revision, 6 / session.Viewport.Zoom)?.Id;
+            var id = Renderer.HitShape(session.Page, world, revision: session.Revision)?.Id ?? Renderer.HitConnector(session.Page, world, session.Revision, 6 / session.Viewport.Zoom)?.Id;
             if (id is not null && !session.Selection.Contains(id)) session.Select(id);
             ContextRequested?.Invoke(e.GetPosition(this)); e.Handled = true;
         };
@@ -183,7 +183,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
             }
         }
         if (session.Tool == EditorTool.Pointer && TryBeginConnectorEdit(screen, world, e.KeyModifiers)) return;
-        var hit = Renderer.HitShape(session.Page, world, 3 / session.Viewport.Zoom);
+        var hit = Renderer.HitShape(session.Page, world, 3 / session.Viewport.Zoom, session.Revision);
         if (session.Tool == EditorTool.Connector)
         {
             _connectSource = hit?.Id; _connectPort = hit is null ? PortSide.Auto : NearestPort(hit, world);
@@ -310,7 +310,7 @@ public sealed partial class DiagramSurface : UserControl, IDisposable
         }
         if (gesture == Gesture.Connect)
         {
-            var target = Renderer.HitShape(session.Page, world, 8 / session.Viewport.Zoom);
+            var target = Renderer.HitShape(session.Page, world, 8 / session.Viewport.Zoom, session.Revision);
             if (_connectSource is not null && target is not null)
                 session.Connect(_connectSource, target.Id, _connectPort, NearestPort(target, world));
             else if (screen.Distance(_startScreen) > 8)

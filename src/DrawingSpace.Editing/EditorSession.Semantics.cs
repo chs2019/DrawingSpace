@@ -34,7 +34,7 @@ public sealed partial class EditorSession
     public DiagramMaster CreateMaster(string shapeId, string name)
     {
         var source = Page.Find(shapeId) ?? throw new ArgumentException("Shape not found.", nameof(shapeId));
-        var master = MasterService.Create(source, name);
+        var master = MasterAuthoring.Capture(Document, Page, [source.Id], name);
         Execute("Create master", () => Document.Masters.Add(master));
         return master;
     }
@@ -73,7 +73,12 @@ public sealed partial class EditorSession
     public void UpdateMaster(string masterId, Action<DiagramMaster> update)
     {
         var master = Document.Masters.FirstOrDefault(m => m.Id == masterId) ?? throw new ArgumentException("Master not found.", nameof(masterId));
-        Execute("Edit master", () => { update(master); master.Revision++; });
+        ArgumentNullException.ThrowIfNull(update);
+        Execute("Edit master", () =>
+        {
+            var before = master.Clone(); update(master);
+            MasterAuthoring.SynchronizeCells(before, master); master.Revision++;
+        });
     }
 
     public void ResetMasterOverride(string shapeId, string property)

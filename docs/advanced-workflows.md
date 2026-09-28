@@ -1,6 +1,6 @@
 # Advanced workbench workflows
 
-These workflows describe the 0.2.0-alpha.1 feature branch, not the current main-branch Pages deployment. Every edit below uses the document's transaction history.
+These workflows describe 0.2.0-alpha.1 source. The deployed site records its exact main-branch source SHA in `build-info.json`. Every edit below uses the document's transaction history.
 
 ## Open and export Visio packages
 
@@ -16,7 +16,7 @@ Select one unlocked shape and open Developer → ShapeSheet. Enter a cell name a
 
 Create master from shape captures one selected shape. Choose a document master and Insert to create an instance; imported multi-shape masters keep internal connectors and group hierarchy. Master text/size/fill edits propagate to instances except where an instance owns a local override. Reset an override in the Masters pane to inherit again. Numeric `Sheet.n!` references resolve within the relevant master instance before page-wide lookup.
 
-Full multi-shape master authoring, nested-master inheritance and every Visio master update rule remain outside this increment.
+Create master from selection captures a connected graph. The component explorer edits its existing components; rename, duplicate, detach and explicit detach/delete operations are available. See [master authoring](masters.md). Full nested-master inheritance and structural add/remove propagation remain unfinished.
 
 ## Selection resizing and rotation
 

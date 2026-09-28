@@ -1,0 +1,37 @@
+{
+  "runtime": ".NET 10.0.12",
+  "os": "Debian GNU/Linux 13 (trixie)",
+  "shapeCount": 20000,
+  "connectorCount": 200,
+  "measurements": [
+    {
+      "milliseconds": 21.6272,
+      "allocatedBytes": 6836552,
+      "vertices": 400
+    },
+    {
+      "milliseconds": 20.7579,
+      "allocatedBytes": 6836552,
+      "vertices": 400
+    },
+    {
+      "milliseconds": 26.7102,
+      "allocatedBytes": 6836608,
+      "vertices": 400
+    },
+    {
+      "milliseconds": 19.817,
+      "allocatedBytes": 6836608,
+      "vertices": 400
+    },
+    {
+      "milliseconds": 21.0722,
+      "allocatedBytes": 6836616,
+      "vertices": 400
+    }
+  ],
+  "note": "Includes one complete route batch. Deterministic sparse fixture; excludes rendering, ShapeSheet, transactions and input. Informational, not a timing gate.",
+  "source": "This change set; source commit is supplied by the containing Git commit.",
+  "batchImplementation": "var scene = RoutingScene.Capture(page); foreach (var edge in page.Connectors) router.RouteSnapshot(scene, edge);",
+  "measuredAt": "2026-09-28"
+}

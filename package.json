@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test:browser": "node scripts/run-browser-tests.mjs",
+    "test:browser:masters": "node scripts/master-authoring-test.mjs",
     "test:browser:advanced": "node scripts/advanced-editing-test.mjs"
   },
   "devDependencies": {

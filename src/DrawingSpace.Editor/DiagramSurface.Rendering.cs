@@ -25,7 +25,7 @@ public sealed partial class DiagramSurface
             var start = page.Find(_connectSource)?.Port(_connectPort) ?? _startWorld;
             using var paint = new SKPaint { IsAntialias = true, Color = SKColor.Parse("#2B579A"), Style = SKPaintStyle.Stroke, StrokeWidth = (float)(1.5 / viewport.Zoom) };
             canvas.DrawLine((float)start.X, (float)start.Y, (float)_lastWorld.X, (float)_lastWorld.Y, paint);
-            var target = Renderer.HitShape(page, _lastWorld, 8 / viewport.Zoom);
+            var target = Renderer.HitShape(page, _lastWorld, 8 / viewport.Zoom, Session!.Revision);
             if (target is not null)
                 foreach (var side in new[] { PortSide.North, PortSide.East, PortSide.South, PortSide.West })
                 { var port = target.Port(side); canvas.DrawCircle((float)port.X, (float)port.Y, (float)(4 / viewport.Zoom), paint); }

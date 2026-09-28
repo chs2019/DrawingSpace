@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Xml.Linq;
 using DrawingSpace.Core;
 using DrawingSpace.Documents;
+using DrawingSpace.Routing;
 
 namespace DrawingSpace.Visio;
 
@@ -12,6 +13,7 @@ internal sealed partial class VisioWriteContext
 
     private void WritePageContents(DiagramPage page, string part, bool master)
     {
+        var routingScene = RoutingScene.Capture(page);
         var oldRoot = _package.Xml(part)?.Root;
         var oldShapes = oldRoot?.Descendants().Where(e => e.Name.LocalName == "Shape").GroupBy(e => VisioXml.Id(e)).ToDictionary(g => g.Key, g => g.First()) ?? [];
         var ids = new Dictionary<string, uint>(StringComparer.Ordinal);
@@ -47,12 +49,12 @@ internal sealed partial class VisioWriteContext
             var children = new XElement(_v + "Shapes");
             foreach (var shape in page.Shapes.Where(s => s.GroupId == group.Id && s.Id != group.AnchorShapeId)) children.Add(ShapeNode(shape, childFrame));
             foreach (var child in page.Groups.Where(g => g.ParentId == group.Id)) children.Add(GroupNode(child, childFrame));
-            foreach (var edge in page.Connectors.Where(c => c.GroupId == group.Id)) children.Add(WriteConnector(page, edge, ids, childFrame, connections, oldShapes.GetValueOrDefault(ids[edge.Id]), part));
+            foreach (var edge in page.Connectors.Where(c => c.GroupId == group.Id)) children.Add(WriteConnector(page, routingScene, edge, ids, childFrame, connections, oldShapes.GetValueOrDefault(ids[edge.Id]), part));
             ReplaceChild(node, "Shapes", children); active.Remove(group.Id); return node;
         }
         foreach (var shape in page.Shapes.Where(s => s.GroupId is null || !groups.ContainsKey(s.GroupId))) shapes.Add(ShapeNode(shape, pageFrame));
         foreach (var group in page.Groups.Where(g => g.ParentId is null || !groups.ContainsKey(g.ParentId))) shapes.Add(GroupNode(group, pageFrame));
-        foreach (var edge in page.Connectors.Where(c => c.GroupId is null || !groups.ContainsKey(c.GroupId))) shapes.Add(WriteConnector(page, edge, ids, pageFrame, connections, oldShapes.GetValueOrDefault(ids[edge.Id]), part));
+        foreach (var edge in page.Connectors.Where(c => c.GroupId is null || !groups.ContainsKey(c.GroupId))) shapes.Add(WriteConnector(page, routingScene, edge, ids, pageFrame, connections, oldShapes.GetValueOrDefault(ids[edge.Id]), part));
         ReplaceChild(root, "Shapes", shapes); ReplaceChild(root, "Connects", connections);
         if (options.IncludeDrawingSpaceMetadata)
         {
@@ -114,14 +116,14 @@ internal sealed partial class VisioWriteContext
         return node;
     }
 
-    private XElement WriteConnector(DiagramPage page, Connector edge, Dictionary<string, uint> ids, MatrixD parent, XElement connects, XElement? old, string part)
+    private XElement WriteConnector(DiagramPage page, RoutingScene routingScene, Connector edge, Dictionary<string, uint> ids, MatrixD parent, XElement connects, XElement? old, string part)
     {
         var id = ids[edge.Id]; var node = old is null ? new XElement(_v + "Shape") : new XElement(old);
         node.Name = _v + "Shape"; node.SetAttributeValue("ID", id); node.SetAttributeValue("Type", "Shape"); node.SetAttributeValue("OneD", "1"); node.SetAttributeValue("NameU", "Dynamic connector." + id);
         if (options.IncludeDrawingSpaceMetadata) { node.SetAttributeValue(_d + "Id", edge.Id); node.SetAttributeValue(_d + "ConnectorKind", edge.Kind); }
         WriteCells(node, edge.Cells);
         if (!parent.TryInvert(out var inverse)) throw new InvalidDataException("The connector coordinate frame is singular.");
-        var route = edge.Waypoints.Count > 0 ? new[] { Endpoint(page, edge, true) }.Concat(edge.Waypoints).Append(Endpoint(page, edge, false)).ToArray() : _router.Route(page, edge).Points.ToArray();
+        var route = edge.Waypoints.Count > 0 ? new[] { Endpoint(page, edge, true) }.Concat(edge.Waypoints).Append(Endpoint(page, edge, false)).ToArray() : _router.RouteSnapshot(routingScene, edge).Points.ToArray();
         var points = route.Select(inverse.Map).ToArray();
         if (points.Length < 2) points = [inverse.Map(edge.Start), inverse.Map(edge.End)];
         var bounds = RectD.Bounds(points); var width = Math.Max(1d / 96, bounds.Width); var height = Math.Max(1d / 96, bounds.Height);
