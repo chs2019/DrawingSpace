@@ -39,7 +39,17 @@ public sealed partial class Shape
     public double TextRotation { get; set; }
     public List<ShapeHyperlink> Hyperlinks { get; set; } = [];
     public ContainerOptions? Container { get; set; }
-    public byte[]? ImageData { get; set; }
+    private byte[]? _imageData;
+    /// <summary>
+    /// Optional encoded raster payload. Empty data is canonically absent, matching the
+    /// renderer and exporters. History/import must not turn a vector into a foreign image
+    /// solely because an empty byte array was supplied. Nonempty buffers are not copied.
+    /// </summary>
+    public byte[]? ImageData
+    {
+        get => _imageData is { Length: > 0 } ? _imageData : null;
+        set => _imageData = value is { Length: > 0 } ? value : null;
+    }
     public string? ImageContentType { get; set; }
     public uint? VisioId { get; set; }
     public uint? VisioMasterId { get; set; }
