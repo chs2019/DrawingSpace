@@ -33,7 +33,6 @@ public sealed class SpatialBoundsIndex
             var center = _bounds[i].Center;
             var x = Quantize(center.X, extent.Left, extent.Width);
             var y = Quantize(center.Y, extent.Top, extent.Height);
-            // Stable tie-breaking makes coincident entries deterministic.
             keys[i] = ((ulong)(Spread(x) | (Spread(y) << 1)) << 32) | (uint)i;
         }
         Array.Sort(keys, _order);
@@ -42,29 +41,39 @@ public sealed class SpatialBoundsIndex
     }
 
     /// <summary>Appends inclusive-intersection matches. Existing results are not cleared or sorted.</summary>
-    public void Query(RectD area, List<int> results)
+    public void Query(RectD area, List<int> results) => Query(area, results, Count);
+
+    /// <summary>
+    /// Appends inclusive-intersection matches whose original input ordinal is less than
+    /// maximumOrdinalExclusive. Prunes entire nodes outside this prefix before traversal.
+    /// Existing results are retained. The limit must be between zero and Count inclusive.
+    /// </summary>
+    public void Query(RectD area, List<int> results, int maximumOrdinalExclusive)
     {
         ArgumentNullException.ThrowIfNull(results);
         if (!area.IsFinite || area.Width < 0 || area.Height < 0 || !double.IsFinite(area.Right) || !double.IsFinite(area.Bottom))
             throw new ArgumentException("The query rectangle must be finite and nonnegative.", nameof(area));
-        if (_nodeCount != 0) QueryNode(0, area, results);
+        if (maximumOrdinalExclusive < 0 || maximumOrdinalExclusive > Count)
+            throw new ArgumentOutOfRangeException(nameof(maximumOrdinalExclusive));
+        if (_nodeCount != 0 && maximumOrdinalExclusive != 0)
+            QueryNode(0, area, results, maximumOrdinalExclusive);
     }
 
-    private void QueryNode(int index, RectD area, List<int> results)
+    private void QueryNode(int index, RectD area, List<int> results, int maximumOrdinalExclusive)
     {
         ref readonly var node = ref _nodes[index];
-        if (!node.Bounds.Intersects(area)) return;
+        if (node.MinimumOrdinal >= maximumOrdinalExclusive || !node.Bounds.Intersects(area)) return;
         if (node.Count > 0)
         {
             for (var i = node.Start; i < node.Start + node.Count; i++)
             {
                 var ordinal = _order[i];
-                if (_bounds[ordinal].Intersects(area)) results.Add(ordinal);
+                if (ordinal < maximumOrdinalExclusive && _bounds[ordinal].Intersects(area)) results.Add(ordinal);
             }
             return;
         }
-        QueryNode(node.Left, area, results);
-        QueryNode(node.Right, area, results);
+        QueryNode(node.Left, area, results, maximumOrdinalExclusive);
+        QueryNode(node.Right, area, results, maximumOrdinalExclusive);
     }
 
     private int Build(int start, int count)
@@ -73,14 +82,21 @@ public sealed class SpatialBoundsIndex
         if (count <= LeafSize)
         {
             var bounds = _bounds[_order[start]];
-            for (var i = start + 1; i < start + count; i++) bounds = RectD.Union(bounds, _bounds[_order[i]]);
-            _nodes[index] = new(bounds, start, count, -1, -1);
+            var minimumOrdinal = _order[start];
+            for (var i = start + 1; i < start + count; i++)
+            {
+                var ordinal = _order[i];
+                minimumOrdinal = Math.Min(minimumOrdinal, ordinal);
+                bounds = RectD.Union(bounds, _bounds[ordinal]);
+            }
+            _nodes[index] = new(bounds, start, count, -1, -1, minimumOrdinal);
         }
         else
         {
             var half = count / 2;
             var left = Build(start, half); var right = Build(start + half, count - half);
-            _nodes[index] = new(RectD.Union(_nodes[left].Bounds, _nodes[right].Bounds), 0, 0, left, right);
+            _nodes[index] = new(RectD.Union(_nodes[left].Bounds, _nodes[right].Bounds), 0, 0, left, right,
+                Math.Min(_nodes[left].MinimumOrdinal, _nodes[right].MinimumOrdinal));
         }
         return index;
     }
@@ -94,5 +110,5 @@ public sealed class SpatialBoundsIndex
         value = (value | (value << 2)) & 0x33333333;
         return (value | (value << 1)) & 0x55555555;
     }
-    private readonly record struct Node(RectD Bounds, int Start, int Count, int Left, int Right);
+    private readonly record struct Node(RectD Bounds, int Start, int Count, int Left, int Right, int MinimumOrdinal);
 }

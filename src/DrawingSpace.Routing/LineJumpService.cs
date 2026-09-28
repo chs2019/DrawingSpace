@@ -9,12 +9,17 @@ public sealed record LineJumpResult(IReadOnlyDictionary<string, IReadOnlyList<Li
     /// <summary>Exact segment intersection tests, after spatial and drawing-order filtering.</summary>
     public int Comparisons { get; init; }
     public int IndexedSegments { get; init; }
+    /// <summary>Spatial queries issued after excluding owners with no earlier segments.</summary>
+    public int SpatialQueries { get; init; }
+    /// <summary>Earlier-owner candidates returned by the spatial index, including candidates not tested after a budget exit.</summary>
+    public long Candidates { get; init; }
 }
 
 /// <summary>
 /// Deterministic crossing ownership in drawing order. A bulk-built spatial index rejects
-/// distant segments before they consume the intersection budget. Shared endpoints and
-/// collinear overlaps never get bridges. The input routes must remain unchanged during a call.
+/// distant and later/self segments before candidate sorting and intersection testing.
+/// Shared endpoints and collinear overlaps never get bridges. The input routes must
+/// remain unchanged during a call. Segment storage and exact comparisons are bounded.
 /// </summary>
 public static class LineJumpService
 {
@@ -33,12 +38,19 @@ public static class LineJumpService
                 throw new ArgumentException("Connector identities must be unique.", nameof(edges));
         }
         var comparisons = 0;
+        var spatialQueries = 0;
+        var candidateCount = 0L;
         var segments = new List<IndexedSegment>();
-        LineJumpResult Finish(bool exceeded) => new(result, exceeded) { Comparisons = comparisons, IndexedSegments = segments.Count };
-        // Do not allocate an index for pages on which no connector can own a jump.
+        LineJumpResult Finish(bool exceeded) => new(result, exceeded)
+        {
+            Comparisons = comparisons, IndexedSegments = segments.Count,
+            SpatialQueries = spatialQueries, Candidates = candidateCount
+        };
         if (!edges.Any(e => e.LineJumps != LineJumpStyle.None && e.JumpSize >= .5)) return Finish(false);
+        var ownerStarts = new int[edges.Count];
         for (var owner = 0; owner < edges.Count; owner++)
         {
+            ownerStarts[owner] = segments.Count;
             if (!routes.TryGetValue(edges[owner].Id, out var route)) continue;
             for (var segment = 1; segment < route.Points.Count; segment++)
             {
@@ -59,7 +71,7 @@ public static class LineJumpService
         foreach (var current in segments)
         {
             var edge = edges[current.Owner];
-            if (edge.LineJumps == LineJumpStyle.None || edge.JumpSize < .5) continue;
+            if (edge.LineJumps == LineJumpStyle.None || edge.JumpSize < .5 || ownerStarts[current.Owner] == 0) continue;
             if (activeOwner != current.Owner)
             {
                 activeOwner = current.Owner;
@@ -69,15 +81,16 @@ public static class LineJumpService
             var length = current.A.Distance(current.B);
             if (length < 2) continue;
             candidates.Clear();
-            spatial.Query(current.Bounds, candidates);
-            // The BVH's traversal order is spatial, not painter order. Stable original
-            // ordinals preserve the old first-crossing-wins overlap suppression rule.
+            spatialQueries++;
+            spatial.Query(current.Bounds, candidates, ownerStarts[current.Owner]);
+            candidateCount += candidates.Count;
+            // Spatial traversal is not painter order. Original ordinals retain the
+            // exhaustive algorithm's first-crossing-wins overlap suppression rule.
             candidates.Sort();
             var segmentJumpStart = jumps!.Count;
             foreach (var ordinal in candidates)
             {
                 var other = segments[ordinal];
-                if (other.Owner >= current.Owner) break;
                 if (comparisons == maximumComparisons) return Finish(true);
                 comparisons++;
                 if (!Intersect(current.A, current.B, other.A, other.B, out var crossing)) continue;
@@ -107,7 +120,7 @@ public static class LineJumpService
     {
         var length = 0d;
         for (var i = 1; i < route.Points.Count; i++) length += route.Points[i - 1].Distance(route.Points[i]);
-        var distance = length * Math.Clamp(edge.LabelPosition, 0, 1);
+        var distance = length * edge.LabelPosition;
         for (var i = 1; i < route.Points.Count; i++)
         {
             var a = route.Points[i - 1]; var b = route.Points[i]; var segment = a.Distance(b);
