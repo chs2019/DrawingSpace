@@ -37,7 +37,7 @@ jobs:
           SHA=$(jq -r .head_sha /tmp/build.json)
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ steps.source.outputs.sha }}
       - uses: actions/download-artifact@v4
