@@ -4,38 +4,109 @@ using DrawingSpace.Documents;
 namespace DrawingSpace.Routing;
 
 public readonly record struct LineJump(int Segment, PointD Point, double Radius);
-public sealed record LineJumpResult(IReadOnlyDictionary<string, IReadOnlyList<LineJump>> Jumps, bool BudgetExceeded);
+public sealed record LineJumpResult(IReadOnlyDictionary<string, IReadOnlyList<LineJump>> Jumps, bool BudgetExceeded)
+{
+    /// <summary>Exact segment intersection tests, after spatial and drawing-order filtering.</summary>
+    public int Comparisons { get; init; }
+    public int IndexedSegments { get; init; }
+    /// <summary>Spatial queries issued after excluding owners with no earlier segments.</summary>
+    public int SpatialQueries { get; init; }
+    /// <summary>Earlier-owner candidates returned by the spatial index, including candidates not tested after a budget exit.</summary>
+    public long Candidates { get; init; }
+}
 
-/// <summary>Deterministic crossing ownership in drawing order. Shared endpoints and collinear overlaps never get bridges.</summary>
+/// <summary>
+/// Deterministic crossing ownership in drawing order. A bulk-built spatial index rejects
+/// distant and later/self segments before candidate sorting and intersection testing.
+/// Shared endpoints and collinear overlaps never get bridges. The input routes must
+/// remain unchanged during a call. Segment storage and exact comparisons are bounded.
+/// </summary>
 public static class LineJumpService
 {
-    public static LineJumpResult Analyze(IReadOnlyList<Connector> edges, IReadOnlyDictionary<string, RouteResult> routes, int maximumComparisons = 200000)
+    public static LineJumpResult Analyze(IReadOnlyList<Connector> edges, IReadOnlyDictionary<string, RouteResult> routes,
+        int maximumComparisons = 200000, int maximumSegments = 262144)
     {
+        ArgumentNullException.ThrowIfNull(edges);
+        ArgumentNullException.ThrowIfNull(routes);
         if (maximumComparisons < 1) throw new ArgumentOutOfRangeException(nameof(maximumComparisons));
-        var result = new Dictionary<string, IReadOnlyList<LineJump>>(StringComparer.Ordinal); var comparisons = 0;
-        for (var index = 0; index < edges.Count; index++)
+        if (maximumSegments is < 1 or > 1000000) throw new ArgumentOutOfRangeException(nameof(maximumSegments));
+        var result = new Dictionary<string, IReadOnlyList<LineJump>>(edges.Count, StringComparer.Ordinal);
+        foreach (var edge in edges)
         {
-            var edge = edges[index]; var jumps = new List<LineJump>(); result[edge.Id] = jumps;
-            if (edge.LineJumps == LineJumpStyle.None || !routes.TryGetValue(edge.Id, out var current)) continue;
-            for (var segment = 1; segment < current.Points.Count; segment++)
+            ArgumentNullException.ThrowIfNull(edge);
+            if (!result.TryAdd(edge.Id, Array.Empty<LineJump>()))
+                throw new ArgumentException("Connector identities must be unique.", nameof(edges));
+        }
+        var comparisons = 0;
+        var spatialQueries = 0;
+        var candidateCount = 0L;
+        var segments = new List<IndexedSegment>();
+        LineJumpResult Finish(bool exceeded) => new(result, exceeded)
+        {
+            Comparisons = comparisons, IndexedSegments = segments.Count,
+            SpatialQueries = spatialQueries, Candidates = candidateCount
+        };
+        if (!edges.Any(e => e.LineJumps != LineJumpStyle.None && e.JumpSize >= .5)) return Finish(false);
+        var ownerStarts = new int[edges.Count];
+        for (var owner = 0; owner < edges.Count; owner++)
+        {
+            ownerStarts[owner] = segments.Count;
+            if (!routes.TryGetValue(edges[owner].Id, out var route)) continue;
+            for (var segment = 1; segment < route.Points.Count; segment++)
             {
-                var a = current.Points[segment - 1]; var b = current.Points[segment]; var length = a.Distance(b);
-                for (var previous = 0; previous < index; previous++)
-                {
-                    if (!routes.TryGetValue(edges[previous].Id, out var other)) continue;
-                    for (var k = 1; k < other.Points.Count; k++)
-                    {
-                        if (++comparisons > maximumComparisons) return new(result, true);
-                        if (!Intersect(a, b, other.Points[k - 1], other.Points[k], out var crossing)) continue;
-                        var radius = Math.Min(edge.JumpSize, Math.Min(a.Distance(crossing), b.Distance(crossing)) * .45);
-                        if (radius < .5 || length < 2 || jumps.Any(j => j.Segment == segment && j.Point.Distance(crossing) < radius + j.Radius)) continue;
-                        jumps.Add(new(segment, crossing, radius));
-                    }
-                }
+                var a = route.Points[segment - 1]; var b = route.Points[segment];
+                if (!a.IsFinite || !b.IsFinite)
+                    throw new ArgumentException("Route points must be finite.", nameof(routes));
+                if (a == b) continue;
+                if (segments.Count == maximumSegments) return Finish(true);
+                var bounds = new RectD(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Abs(b.X - a.X), Math.Abs(b.Y - a.Y));
+                if (!bounds.IsFinite) throw new ArgumentException("Route bounds exceed the finite coordinate range.", nameof(routes));
+                segments.Add(new(owner, segment, a, b, bounds));
             }
         }
-        return new(result, false);
+        var spatial = new SpatialBoundsIndex(segments.Select(s => s.Bounds));
+        var candidates = new List<int>();
+        List<LineJump>? jumps = null;
+        var activeOwner = -1;
+        foreach (var current in segments)
+        {
+            var edge = edges[current.Owner];
+            if (edge.LineJumps == LineJumpStyle.None || edge.JumpSize < .5 || ownerStarts[current.Owner] == 0) continue;
+            if (activeOwner != current.Owner)
+            {
+                activeOwner = current.Owner;
+                jumps = new List<LineJump>();
+                result[edge.Id] = jumps;
+            }
+            var length = current.A.Distance(current.B);
+            if (length < 2) continue;
+            candidates.Clear();
+            spatialQueries++;
+            spatial.Query(current.Bounds, candidates, ownerStarts[current.Owner]);
+            candidateCount += candidates.Count;
+            // Spatial traversal is not painter order. Original ordinals retain the
+            // exhaustive algorithm's first-crossing-wins overlap suppression rule.
+            candidates.Sort();
+            var segmentJumpStart = jumps!.Count;
+            foreach (var ordinal in candidates)
+            {
+                var other = segments[ordinal];
+                if (comparisons == maximumComparisons) return Finish(true);
+                comparisons++;
+                if (!Intersect(current.A, current.B, other.A, other.B, out var crossing)) continue;
+                var radius = Math.Min(edge.JumpSize, Math.Min(current.A.Distance(crossing), current.B.Distance(crossing)) * .45);
+                if (radius < .5) continue;
+                var overlap = false;
+                for (var j = segmentJumpStart; j < jumps.Count; j++)
+                    if (jumps[j].Point.Distance(crossing) < radius + jumps[j].Radius) { overlap = true; break; }
+                if (!overlap) jumps.Add(new(current.Segment, crossing, radius));
+            }
+        }
+        return Finish(false);
     }
+
+    private readonly record struct IndexedSegment(int Owner, int Segment, PointD A, PointD B, RectD Bounds);
+
     private static bool Intersect(PointD a, PointD b, PointD c, PointD d, out PointD point)
     {
         point = default; var u = b - a; var v = d - c; var denominator = u.X * v.Y - u.Y * v.X;
@@ -44,17 +115,18 @@ public static class LineJumpService
         if (t <= 1e-7 || t >= 1 - 1e-7 || s <= 1e-7 || s >= 1 - 1e-7) return false;
         point = a + u * t; return point.IsFinite;
     }
+
     public static PointD LabelPoint(Connector edge, RouteResult route)
     {
         var length = 0d;
         for (var i = 1; i < route.Points.Count; i++) length += route.Points[i - 1].Distance(route.Points[i]);
-        var distance = length * Math.Clamp(edge.LabelPosition, 0, 1);
+        var distance = length * edge.LabelPosition;
         for (var i = 1; i < route.Points.Count; i++)
         {
             var a = route.Points[i - 1]; var b = route.Points[i]; var segment = a.Distance(b);
             if (distance <= segment && segment > 1e-9) return a + (b - a) * (distance / segment) + edge.LabelOffset;
             distance -= segment;
         }
-        return (route.Points.LastOrDefault()) + edge.LabelOffset;
+        return route.Points.LastOrDefault() + edge.LabelOffset;
     }
 }

@@ -17,6 +17,7 @@ public sealed partial class DiagramWorkbench
         yield return new("Editing", Command("Rich Text", OfficeIcon.Text, () => ShowPane("richtext"), true),
             Command("Connections", OfficeIcon.Connector, () => ShowPane("connections"), true),
             Command("Recalculate", OfficeIcon.Layout, Session.Recalculate, true));
+        yield return BuildGeometryGroup();
         yield return new("Compatibility", Command("Import Diagnostics", OfficeIcon.Check, () => ShowPane("import"), true));
     }
 
@@ -119,7 +120,7 @@ public sealed partial class DiagramWorkbench
 
     private void BuildConnectionsPane()
     {
-        Paragraph("Select a connector to drag its endpoint circles, waypoint squares or label diamond. Drag a hollow segment grip, or Alt-drag a segment, to insert a waypoint. Shift-click a waypoint removes it.");
+        Paragraph("Select a connector to drag its endpoint circles, waypoint squares or label diamond. Drag an orthogonal segment grip to move the segment; Alt-drag inserts one waypoint. Shift-click a waypoint removes it.");
         if (Session.SelectedConnectors.Count == 1)
         {
             var edge = Session.SelectedConnectors[0];

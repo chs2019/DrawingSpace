@@ -18,15 +18,19 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - name: Compile deterministic headless benchmark
-        run: dotnet build tools/DrawingSpace.RoutingBenchmarks -c Release
-      - name: Measure route-batch time and allocations
+      - name: Compile deterministic headless benchmarks
+        run: |
+          dotnet build tools/DrawingSpace.RoutingBenchmarks -c Release
+          dotnet build tools/DrawingSpace.CrossingBenchmarks -c Release
+      - name: Measure route-batch and crossing time and allocations
         shell: bash
         run: |
           mkdir -p artifacts/performance
           dotnet run --project tools/DrawingSpace.RoutingBenchmarks -c Release --no-build > artifacts/performance/routing.json
+          dotnet run --project tools/DrawingSpace.CrossingBenchmarks -c Release --no-build > artifacts/performance/crossings.json
           git rev-parse HEAD > artifacts/performance/commit.txt
           cat artifacts/performance/routing.json
+          cat artifacts/performance/crossings.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

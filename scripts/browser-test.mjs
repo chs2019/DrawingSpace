@@ -68,7 +68,7 @@ try {
   await check('Pointer drag moves geometry and Undo restores exact coordinates', async () => {
     const state = await snapshot(); const shape = state.shapes.find(s => s.selected); assert.ok(shape); const original = { x: shape.x, y: shape.y };
     const point = center(state, shape); await page.mouse.move(point.x, point.y); await page.mouse.down(); await page.mouse.move(point.x + 54, point.y + 31, { steps: 9 }); await page.mouse.up();
-    await until(s => s.shapes.some(n => n.id === shape.id && (n.x !== original.x || n.y !== original.y)), 'Shape drag did not change geometry');
+    await until(s => s.gesture === 'None' && s.shapes.some(n => n.id === shape.id && (n.x !== original.x || n.y !== original.y)), 'Shape drag did not change geometry');
     await page.keyboard.press('Control+z'); await until(s => s.shapes.some(n => n.id === shape.id && n.x === original.x && n.y === original.y), 'Undo did not restore geometry');
   });
   await check('Double-click edits a shape label through the actual text input', async () => {
@@ -114,7 +114,7 @@ try {
     await page.waitForTimeout(1200); await page.reload({ waitUntil: 'domcontentloaded', timeout: 120000 });
     await until(s => s.ready && s.nodes === 14 && s.shapes.some(n => n.text === 'Ready for review'), 'Recovery did not restore the edited drawing', 120000);
     await page.locator('.uno-loader').waitFor({ state: 'hidden', timeout: 30000 });
-    await page.waitForTimeout(300); // Allow the read-only geometry snapshot to observe the final fitted viewport.
+    await page.waitForTimeout(300); // Observe the final fitted viewport.
   });
 
   async function enter(name, value) { await click(name); await page.keyboard.press('Control+a'); await page.keyboard.type(value); }
@@ -124,7 +124,11 @@ try {
     return await until(s => s.shapes.some(n => n.id === shape.id && n.selected), 'Could not select shape');
   }
   function screen(state, point) { return { x: state.canvasX + state.panX + point.x * state.zoom, y: state.canvasY + state.panY + point.y * state.zoom }; }
-  async function drag(a, b) { await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(b.x, b.y, {steps: 10}); await page.mouse.up(); }
+  async function drag(a, b) {
+    await page.mouse.move(a.x, a.y); await page.mouse.down();
+    await page.mouse.move(b.x, b.y, { steps: 10 }); await page.mouse.up();
+    await until(s => s.gesture === 'None', 'Pointer release did not finish the gesture');
+  }
   await check('ShapeSheet pane recalculates geometry and supports exact undo', async () => {
     await selectLabel('Ready for review'); const original = (await snapshot()).shapes.find(s => s.selected);
     await click('Developer'); await click('ShapeSheet'); await enter('Cell formula', '3 in'); await click('Apply formula');
@@ -177,12 +181,18 @@ try {
   await check('Alt-drag inserts a route waypoint and it can be removed with Shift-click', async () => {
     const state = await snapshot(); const edge = state.connectors.find(c => c.selected); assert.ok(edge);
     const p = {x:(edge.route[0].x + edge.route[1].x)/2,y:(edge.route[0].y + edge.route[1].y)/2}; const a = screen(state,p);
+    const expected = { x: p.x + 45 / state.zoom, y: p.y + 12 / state.zoom };
     await page.keyboard.down('Alt');
     try { await drag(a,{x:a.x+45,y:a.y+12}); }
     finally { await page.keyboard.up('Alt'); }
-    const after = await until(s => s.connectors.some(c => c.id === edge.id && c.waypointCount > 0), 'Waypoint was not inserted');
+    // A preview already contains a waypoint. Wait for the released pointer's final
+    // coordinate, not an earlier preview that can put the next click outside the grip.
+    const after = await until(s => s.gesture === 'None' && s.connectors.some(c => c.id === edge.id
+      && c.waypoints.some(w => Math.hypot(w.x - expected.x, w.y - expected.y) < 1)), 'Waypoint did not reach the completed drag position');
     const point = screen(after,after.connectors.find(c => c.id === edge.id).waypoints[0]);
-    await page.keyboard.down('Shift'); await page.mouse.click(point.x,point.y); await page.keyboard.up('Shift');
+    await page.keyboard.down('Shift');
+    try { await page.mouse.click(point.x,point.y); }
+    finally { await page.keyboard.up('Shift'); }
     await until(s => s.connectors.some(c => c.id === edge.id && c.waypointCount === 0), 'Waypoint was not removed');
   });
   await check('VSDX export and binary file-picker import round-trip the live drawing', async () => {

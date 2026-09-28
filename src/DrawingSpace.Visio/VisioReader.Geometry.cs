@@ -13,10 +13,23 @@ internal sealed partial class VisioReadContext
         foreach (var section in VisioXml.Children(effective, "Section").Where(s => VisioXml.Attribute(s, "N") == "Geometry" && VisioXml.Attribute(s, "Del") != "1"))
         {
             if (VisioXml.Boolean(section, "NoShow")) continue;
-            var figure = new GeometryFigure { Filled = !VisioXml.Boolean(section, "NoFill"), Stroked = !VisioXml.Boolean(section, "NoLine") };
+            // Visio compound contours use alternate filling. Native nonzero figures
+            // carry an explicit optional extension so DrawingSpace round trips retain
+            // their own rule rather than silently turning overlapping contours into holes.
+            var figure = new GeometryFigure
+            {
+                Filled = !VisioXml.Boolean(section, "NoFill"), Stroked = !VisioXml.Boolean(section, "NoLine"),
+                EvenOdd = (string?)section.Attribute(VisioNamespaces.DrawingSpace + "FillRule") != "NonZero"
+            };
             var current = new PointD(); var first = new PointD(); var hasMove = false;
             PointD Normalize(PointD p) => new(p.X / width, 1 - p.Y / height);
-            void Move(PointD point) { figure.Segments.Add(new() { Verb = GeometryVerb.Move, End = Normalize(point) }); current = first = point; hasMove = true; }
+            void CloseSubpath()
+            {
+                if (hasMove && current.Distance(first) < 1e-9 && figure.Segments.Count > 1
+                    && figure.Segments[^1].Verb is not GeometryVerb.Close and not GeometryVerb.Move)
+                    figure.Segments.Add(new() { Verb = GeometryVerb.Close });
+            }
+            void Move(PointD point) { CloseSubpath(); figure.Segments.Add(new() { Verb = GeometryVerb.Move, End = Normalize(point) }); current = first = point; hasMove = true; }
             void Line(PointD point) { if (!hasMove) Move(current); figure.Segments.Add(new() { Verb = GeometryVerb.Line, End = Normalize(point) }); current = point; }
             void Arc(PointD through, PointD end, double rotation, double ratio)
             {
@@ -76,7 +89,7 @@ internal sealed partial class VisioReadContext
                         break;
                 }
             }
-            if (hasMove && current.Distance(first) < 1e-9 && figure.Segments.Count > 1 && figure.Segments[^1].Verb != GeometryVerb.Close) figure.Segments.Add(new() { Verb = GeometryVerb.Close });
+            CloseSubpath();
             if (figure.Segments.Count > 0) output.Add(figure);
         }
         return output;
