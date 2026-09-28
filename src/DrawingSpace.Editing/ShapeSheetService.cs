@@ -114,6 +114,7 @@ public static class ShapeSheetService
         {
             if (!oldPages.TryGetValue(page.Id, out var oldPage)) continue;
             var previous = oldPage.Shapes.ToDictionary(s => s.Id);
+            var oldScope = new ShapeSheetScope(before, oldPage);
             var scope = new ShapeSheetScope(current, page);
             foreach (var shape in page.Shapes)
             {
@@ -139,24 +140,24 @@ public static class ShapeSheetService
                 {
                     if (scope.Cell(shape, name) is not { } cell) continue;
                     // An explicit formula edit in this transaction must not be overwritten by its preview value.
-                    var oldCell = new ShapeSheetScope(before, oldPage).Cell(old, name);
+                    var oldCell = oldScope.Cell(old, name);
                     if (oldCell is not null && cell.Formula != oldCell.Formula) continue;
-                    WriteValue(current, page, shape, name, value, new HashSet<string>(), 0);
+                    WriteValue(scope, shape, name, value, new HashSet<string>(), 0);
                 }
             }
         }
     }
 
-    private static void WriteValue(DiagramDocument document, DiagramPage page, Shape shape, string name, FormulaValue value, HashSet<string> active, int depth)
+    private static void WriteValue(ShapeSheetScope scope, Shape shape, string name, FormulaValue value, HashSet<string> active, int depth)
     {
         if (depth >= 10 || !active.Add(shape.Id + "!" + name.ToUpperInvariant())) throw new InvalidOperationException("Cyclic SETATREF assignment.");
-        var scope = new ShapeSheetScope(document, page); var old = scope.Cell(shape, name);
+        var old = scope.Cell(shape, name);
         if (old is not null && FormulaInspection.IsGuarded(old.Formula)) return;
         if (old is not null && FormulaInspection.AssignmentTarget(old.Formula) is { } target)
         {
             var index = target.IndexOf('!'); var targetShape = index < 0 ? shape : scope.FindSheet(shape, target[..index]);
             if (targetShape is null) throw new InvalidOperationException("SETATREF references a missing shape.");
-            WriteValue(document, page, targetShape, index < 0 ? target : target[(index + 1)..], value, active, depth + 1);
+            WriteValue(scope, targetShape, index < 0 ? target : target[(index + 1)..], value, active, depth + 1);
             return;
         }
         SetLocal(shape, name, new() { Value = value.ToString(), Unit = old?.Unit ?? Unit(name) });

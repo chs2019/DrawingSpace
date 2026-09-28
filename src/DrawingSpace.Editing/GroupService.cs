@@ -27,14 +27,30 @@ public static class GroupService
         return group;
     }
 
-    public static void Ungroup(DiagramPage page, string groupId)
+    public static void Ungroup(DiagramPage page, string groupId, DiagramDocument? document = null)
     {
         var group = page.Groups.FirstOrDefault(g => g.Id == groupId);
-        var parent = group?.ParentId;
+        if (group is null) return;
+        var members = page.GroupShapes(groupId);
+        if (members.Any(page.IsLocked) || page.Connectors.Any(c => page.IsInGroup(c.GroupId, groupId)
+            && page.Layers.FirstOrDefault(l => l.Id == c.LayerId)?.Locked == true))
+            throw new InvalidOperationException("Unlock the complete group before ungrouping it.");
+        var anchor = page.Find(group.AnchorShapeId);
+        if (anchor is not null)
+        {
+            var children = page.Shapes.Where(s => s.FormulaParentId == anchor.Id).ToArray();
+            if (children.Any(page.IsLocked)) throw new InvalidOperationException("A locked coordinate child prevents ungrouping.");
+            var scope = new ShapeSheetScope(document ?? new DiagramDocument { Pages = [page] }, page);
+            // Resolve references before changing ANY frame. Nested groups retain their own frames.
+            foreach (var child in children) CoordinateRebase.MaterializeParentReferences(scope, child, child);
+            foreach (var child in children) CoordinateRebase.Reparent(page, child, anchor.FormulaParentId);
+            if (!page.Groups.Any(g => g.Id != groupId && g.AnchorShapeId == anchor.Id)) anchor.IsGroupAnchor = false;
+        }
+        var parent = group.ParentId;
         foreach (var shape in page.Shapes.Where(s => s.GroupId == groupId)) shape.GroupId = parent;
         foreach (var edge in page.Connectors.Where(c => c.GroupId == groupId)) edge.GroupId = parent;
         foreach (var child in page.Groups.Where(g => g.ParentId == groupId)) child.ParentId = parent;
-        if (group is not null) page.Groups.Remove(group);
+        page.Groups.Remove(group);
     }
 
     public static void RemoveEmpty(DiagramPage page)
