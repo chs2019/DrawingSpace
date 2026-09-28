@@ -18,6 +18,9 @@ internal sealed partial class VisioWriteContext
         for (var index = 0; index < figures.Count; index++)
         {
             var figure = figures[index]; var section = new XElement(_v + "Section", new XAttribute("N", "Geometry"), new XAttribute("IX", index));
+            if (options.IncludeDrawingSpaceMetadata) section.SetAttributeValue(_d + "FillRule", figure.EvenOdd ? "EvenOdd" : "NonZero");
+            if (figure.Filled && !figure.EvenOdd && figure.Segments.Count(s => s.Verb == GeometryVerb.Move) > 1)
+                Warn("NonZeroFillRule", part, "A compound nonzero-winding figure may differ in consumers using alternate fill. DrawingSpace metadata preserves its rule; create an independent path copy to normalize its filled outline for interchange.", shapeId);
             VisioXml.SetCell(section, "NoFill", figure.Filled ? 0 : 1); VisioXml.SetCell(section, "NoLine", figure.Stroked ? 0 : 1); VisioXml.SetCell(section, "NoShow", 0);
             var first = new PointD(); var current = new PointD(); var rowIndex = 0;
             PointD Map(PointD p) => new(p.X + shear * height / width * (.5 - p.Y), 1 - p.Y);
