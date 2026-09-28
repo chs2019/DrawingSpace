@@ -65,7 +65,8 @@ try {
     await until(s => s.nodes === 2 && s.edges === 1, 'AutoConnect not created');
     await click('Select All'); await click('Developer'); await click('Masters');
     await click('Create master from selection'); await enter('Master name', 'Connected master'); await page.keyboard.press('Enter');
-    state = await until(s => s.masters === 1, 'Selection master not created');
+    state = await until(s => s.masters === 1 && s.elements.some(e => e.name === 'Edit master component Process' && visible(e)),
+      'Selection master or its component explorer did not become ready');
     assert.equal(state.nodes, 2); assert.equal(state.edges, 1);
     assert.ok(state.elements.some(e => e.name === 'Edit master component Process'));
   });
