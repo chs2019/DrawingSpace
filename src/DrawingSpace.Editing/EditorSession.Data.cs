@@ -17,6 +17,7 @@ public sealed partial class EditorSession
         if (IsInteracting) throw new InvalidOperationException("Finish the gesture before refreshing data.");
         var targets = new List<DataRefreshTarget>();
         var issues = new List<DataRefreshIssue>(); var issueCount = 0; var work = 0L;
+        ShapeSheetScope? propertyScope = null;
         void Issue(Shape shape, string field, string reason)
         {
             issueCount++;
@@ -51,6 +52,11 @@ public sealed partial class EditorSession
             foreach (var column in source.Columns)
             {
                 var incoming = row[column];
+                if (DataCellOwned(Document, Page, shape, column, ref propertyScope))
+                {
+                    Issue(shape, column, "ShapeSheet owns this property; edit its cell explicitly before linking this field.");
+                    continue;
+                }
                 var hasCurrent = shape.Data.TryGetValue(column, out var current);
                 string? old = null;
                 var hadBaseline = previous is not null && previous.Baseline.TryGetValue(column, out old);
@@ -95,6 +101,7 @@ public sealed partial class EditorSession
             || plan.SelectedIds is not null && !Selection.SetEquals(plan.SelectedIds))
             throw new InvalidOperationException("Refresh preview is stale; preview the source again.");
         var index = Page.Shapes.ToDictionary(s => s.Id, StringComparer.Ordinal);
+        ShapeSheetScope? propertyScope = null;
         foreach (var target in plan.Targets)
         {
             if (!index.TryGetValue(target.Shape.Id, out var shape) || !ReferenceEquals(shape, target.Shape)
@@ -102,6 +109,10 @@ public sealed partial class EditorSession
                 || !DataMapEquals(shape.Data, target.Expected)
                 || !DataBindingEquals(shape.DataBinding, target.ExpectedBinding))
                 throw new InvalidOperationException("A refresh target changed; preview the source again.");
+            foreach (var (field, value) in target.Values)
+                if ((!target.Expected.TryGetValue(field, out var old) || value != old)
+                    && DataCellOwned(Document, Page, shape, field, ref propertyScope))
+                    throw new InvalidOperationException("ShapeSheet now owns an imported field; preview the source again.");
         }
         if (plan.ChangedShapes == 0) return false;
         Execute("Refresh linked data", () =>
@@ -143,6 +154,17 @@ public sealed partial class EditorSession
         var targets = EditableShapes.Where(s => s.DataGraphics.Count > 0).ToArray();
         if (targets.Length == 0) return;
         Execute("Remove data graphics", () => { foreach (var shape in targets) shape.DataGraphics.Clear(); });
+    }
+
+    // ShapeSheet may supply local or inherited Prop cells. Never claim a source value
+    // was accepted when transaction recalculation would immediately replace it.
+    private static bool DataCellOwned(DiagramDocument document, DiagramPage page, Shape shape,
+        string field, ref ShapeSheetScope? scope)
+    {
+        if (shape.Cells.Count == 0 && shape.MasterId is null) return false;
+        scope ??= new(document, page);
+        return scope.Cell(shape, "Prop." + field) is not null
+            || scope.Cell(shape, "Prop." + field + ".Value") is not null;
     }
 
     private static bool DataMapEquals(IReadOnlyDictionary<string, string> a, IReadOnlyDictionary<string, string> b)

@@ -38,6 +38,10 @@ created. Removed source rows never delete shapes. Removed columns retain their
 values/baselines so a later reintroduced column can still be reconciled. Locked
 shapes/layers are reported rather than edited. Links to other source identities
 are ignored. **Unlink Data** removes the link, not the displayed data values.
+Local or inherited ShapeSheet `Prop` cells retain ownership of their fields:
+refresh reports those fields and never silently overwrites their cells, even
+with local-conflict overwrite enabled. Ordinary linked data can drive formulas
+such as `Width = (Prop.Progress / 100) * 2 in`; recalculation and undo include both.
 
 Plans are session/document/page/revision-bound and validate their targets before
 any write. Selected-only plans also retain their selection. Unnotified changes
