@@ -10,7 +10,7 @@ internal sealed record DataRefreshTarget(
     ShapeDataBinding? ExpectedBinding,
     Dictionary<string, string> Values, ShapeDataBinding Binding, bool Changed);
 
-/// <summary>A single-use, session/revision-bound preview. Targets are checked before any write.</summary>
+/// <summary>A session/revision-bound preview. Applying changes invalidates it; targets are checked before any write.</summary>
 public sealed class DataRefreshPlan
 {
     internal EditorSession Owner { get; }

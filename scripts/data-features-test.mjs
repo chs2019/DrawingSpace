@@ -113,6 +113,7 @@ try {
   await check('Native save and file-picker reopen retain links, baseline and all graphics', async () => {
     const pending = page.waitForEvent('download'); await click('Save');
     const bytes = await fs.readFile(await (await pending).path());
+    await until(s => !s.dirty, 'Save did not mark the current revision');
     const document = JSON.parse(bytes.toString('utf8'));
     const shape = document.pages.flatMap(p => p.shapes).find(s => s.id === id);
     assert.equal(shape.dataBinding.baseline.Progress, '90'); assert.equal(shape.dataGraphics.length, 4);
