@@ -6,6 +6,7 @@ public sealed partial class DiagramWorkbench
 {
     private void RebuildProperties()
     {
+        RetireDataEditors();
         _properties.Children.Clear(); _properties.Spacing = 10;
         var title = _pane switch { "externaldata" => "External Data", "datagraphics" => "Data Graphics", "shapesheet" => "ShapeSheet", "masters" => "Document Masters", "containers" => "Containers", "richtext" => "Text Formatting", "connections" => "Connections", "import" => "Import Diagnostics", "data" => "Shape Data", "layers" => "Layers", "comments" => "Comments", "validation" => "Issues", "page" => "Page Setup", _ => "Format Shape" };
         var header = new Grid { ColumnDefinitions = { new() { Width = new GridLength(1, GridUnitType.Star) }, new() { Width = GridLength.Auto } } };
