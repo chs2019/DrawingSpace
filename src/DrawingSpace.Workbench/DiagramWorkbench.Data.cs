@@ -13,6 +13,7 @@ public sealed partial class DiagramWorkbench
     private DataRefreshPlan? _dataPlan;
     private DataGraphicKind _graphicKind;
     private bool _graphicLowerIsBetter;
+    private long _dataPaneGeneration;
 
     private void InvalidateDataPreview()
     {
@@ -23,7 +24,15 @@ public sealed partial class DiagramWorkbench
         var row = new Grid { ColumnDefinitions = { new() { Width = new GridLength(118) }, new() { Width = new GridLength(1, GridUnitType.Star) } } };
         row.Children.Add(OfficeTheme.Text(name, 11));
         var field = OfficeTheme.Field(text, name); field.MaxLength = 256;
-        field.TextChanged += (_, _) => change(field.Text);
+        // Uno may deliver initial TextChanged after the control has been attached.
+        // Only an actual edit on the current pane may invalidate a preview.
+        var generation = _dataPaneGeneration; var previous = field.Text;
+        field.TextChanged += (_, _) =>
+        {
+            if (generation != _dataPaneGeneration || _pane is not ("externaldata" or "datagraphics")
+                || field.Text == previous) return;
+            previous = field.Text; change(previous);
+        };
         Grid.SetColumn(field, 1); row.Children.Add(field); _properties.Children.Add(row);
     }
     private OfficeButton DataButton(string name, OfficeIcon icon, Action action, bool enabled = true)
@@ -44,6 +53,7 @@ public sealed partial class DiagramWorkbench
 
     private void BuildExternalDataPane()
     {
+        _dataPaneGeneration++;
         _properties.Spacing = 6;
         _properties.Children.Add(OfficeTheme.Row(
             DataButton("Open CSV", OfficeIcon.Open, () => RunAsync(OpenDataFileAsync), _storage is ITabularWorkspaceStorage),
@@ -54,8 +64,14 @@ public sealed partial class DiagramWorkbench
         var delimiter = new ComboBox { ItemsSource = new[] { "Comma", "Semicolon", "Tab" },
             SelectedIndex = _dataDelimiter == ',' ? 0 : _dataDelimiter == ';' ? 1 : 2, MinHeight = 28, FontSize = 12 };
         AutomationProperties.SetName(delimiter, "CSV delimiter");
+        var generation = _dataPaneGeneration;
         delimiter.SelectionChanged += (_, _) =>
-        { _dataDelimiter = delimiter.SelectedIndex == 1 ? ';' : delimiter.SelectedIndex == 2 ? '\t' : ','; InvalidateDataPreview(); };
+        {
+            if (generation != _dataPaneGeneration || _pane != "externaldata" || delimiter.SelectedIndex < 0) return;
+            var value = delimiter.SelectedIndex == 1 ? ';' : delimiter.SelectedIndex == 2 ? '\t' : ',';
+            if (value == _dataDelimiter) return;
+            _dataDelimiter = value; InvalidateDataPreview();
+        };
         _properties.Children.Add(delimiter);
         Paragraph("Match by $text, $name, $id, or a shape-data field. Linked shapes refresh by stored key, not row order.");
         // Configure multiline semantics before assigning text: a single-line TextBox
@@ -64,14 +80,25 @@ public sealed partial class DiagramWorkbench
         csv.AcceptsReturn = true; csv.TextWrapping = TextWrapping.NoWrap;
         csv.Height = 74; csv.MaxLength = CsvDataTable.MaximumCharacters;
         csv.Text = _dataCsv;
-        csv.TextChanged += (_, _) => { _dataCsv = csv.Text; InvalidateDataPreview(); };
+        var previousCsv = csv.Text;
+        csv.TextChanged += (_, _) =>
+        {
+            if (generation != _dataPaneGeneration || _pane != "externaldata" || csv.Text == previousCsv) return;
+            previousCsv = csv.Text; _dataCsv = previousCsv; InvalidateDataPreview();
+        };
         _properties.Children.Add(csv);
         CheckBox Check(string name, bool current, Action<bool> change)
         {
             var check = new CheckBox { Content = name, IsChecked = current, MinHeight = 24, FontSize = 12 };
             AutomationProperties.SetName(check, name);
-            check.Checked += (_, _) => { change(true); _dataPlan = null; };
-            check.Unchecked += (_, _) => { change(false); _dataPlan = null; };
+            var previous = current;
+            void Changed(bool value)
+            {
+                if (generation != _dataPaneGeneration || _pane != "externaldata" || value == previous) return;
+                previous = value; change(value); _dataPlan = null;
+            }
+            check.Checked += (_, _) => Changed(true);
+            check.Unchecked += (_, _) => Changed(false);
             return check;
         }
         _properties.Children.Add(Check("Selected shapes only", _dataSelectedOnly, value => _dataSelectedOnly = value));
@@ -111,12 +138,18 @@ public sealed partial class DiagramWorkbench
 
     private void BuildDataGraphicsPane()
     {
+        _dataPaneGeneration++;
         _properties.Spacing = 6;
         Paragraph("Rules are non-destructive. Up to eight overlays are stored per shape; these commands replace only the selected family.");
         var kind = new ComboBox { ItemsSource = new[] { "Color by value", "Data bar", "Icon set", "Text callout" },
             SelectedIndex = (int)_graphicKind, FontSize = 12, MinHeight = 28 };
         AutomationProperties.SetName(kind, "Data graphic kind");
-        kind.SelectionChanged += (_, _) => { if (kind.SelectedIndex >= 0) _graphicKind = (DataGraphicKind)kind.SelectedIndex; };
+        var generation = _dataPaneGeneration;
+        kind.SelectionChanged += (_, _) =>
+        {
+            if (generation == _dataPaneGeneration && _pane == "datagraphics" && kind.SelectedIndex >= 0)
+                _graphicKind = (DataGraphicKind)kind.SelectedIndex;
+        };
         _properties.Children.Add(kind);
         DataField("Graphic field", _graphicField, value => _graphicField = value);
         DataField("Graphic label", _graphicLabel, value => _graphicLabel = value);
@@ -124,8 +157,8 @@ public sealed partial class DiagramWorkbench
         DataField("Range maximum", _graphicMaximum, value => _graphicMaximum = value);
         var lower = new CheckBox { Content = "Lower is better", IsChecked = _graphicLowerIsBetter, MinHeight = 24, FontSize = 12 };
         AutomationProperties.SetName(lower, "Lower is better");
-        lower.Checked += (_, _) => _graphicLowerIsBetter = true;
-        lower.Unchecked += (_, _) => _graphicLowerIsBetter = false;
+        lower.Checked += (_, _) => { if (generation == _dataPaneGeneration && _pane == "datagraphics") _graphicLowerIsBetter = true; };
+        lower.Unchecked += (_, _) => { if (generation == _dataPaneGeneration && _pane == "datagraphics") _graphicLowerIsBetter = false; };
         _properties.Children.Add(lower);
         Paragraph("Numeric bands: lower third red, middle amber, upper green. Text callouts display the value literally. Missing/non-numeric numeric fields do not draw a graphic.");
         _properties.Children.Add(DataButton("Apply Data Graphic", OfficeIcon.Fill, () =>
