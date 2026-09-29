@@ -58,9 +58,12 @@ public sealed partial class DiagramWorkbench
         { _dataDelimiter = delimiter.SelectedIndex == 1 ? ';' : delimiter.SelectedIndex == 2 ? '\t' : ','; InvalidateDataPreview(); };
         _properties.Children.Add(delimiter);
         Paragraph("Match by $text, $name, $id, or a shape-data field. Linked shapes refresh by stored key, not row order.");
-        var csv = OfficeTheme.Field(_dataCsv, "CSV source");
+        // Configure multiline semantics before assigning text: a single-line TextBox
+        // truncates an imported CSV at its first newline during initialization.
+        var csv = OfficeTheme.Field("", "CSV source");
         csv.AcceptsReturn = true; csv.TextWrapping = TextWrapping.NoWrap;
         csv.Height = 74; csv.MaxLength = CsvDataTable.MaximumCharacters;
+        csv.Text = _dataCsv;
         csv.TextChanged += (_, _) => { _dataCsv = csv.Text; InvalidateDataPreview(); };
         _properties.Children.Add(csv);
         CheckBox Check(string name, bool current, Action<bool> change)
