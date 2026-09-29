@@ -41,6 +41,16 @@ internal static class BrowserDiagnostics
                     json.WriteStartObject(); json.WriteString("id", shape.Id); json.WriteString("name", shape.Name); json.WriteString("text", shape.Text); json.WriteString("kind", shape.Kind.ToString());
                     json.WriteNumber("x", shape.X); json.WriteNumber("y", shape.Y); json.WriteNumber("width", shape.Width); json.WriteNumber("height", shape.Height); json.WriteNumber("rotation", shape.Rotation);
                     json.WriteString("masterId", shape.MasterId); json.WriteString("containerId", shape.ContainerId);
+                    json.WriteString("dataSource", shape.DataBinding?.SourceId);
+                    json.WriteString("dataRowKey", shape.DataBinding?.RowKey);
+                    json.WriteString("baseFill", shape.Style.Fill);
+                    json.WriteString("effectiveFill", DrawingSpace.Documents.DataGraphicProjection.Fill(shape));
+                    json.WriteStartObject("data");
+                    foreach (var (key, value) in shape.Data) json.WriteString(key, value);
+                    json.WriteEndObject();
+                    json.WriteStartArray("dataGraphics");
+                    foreach (var rule in shape.DataGraphics) json.WriteStringValue(rule.Kind.ToString());
+                    json.WriteEndArray();
                     json.WriteNumber("textSpans", shape.TextSpans.Count); json.WriteNumber("threads", shape.Threads.Count);
                     json.WriteBoolean("rangeBold", shape.TextSpans.Any(s => s.Bold == true)); json.WriteNumber("connectionPoints", shape.ConnectionPoints.Count);
                     json.WriteBoolean("selected", session.Selection.Contains(shape.Id)); json.WriteEndObject();

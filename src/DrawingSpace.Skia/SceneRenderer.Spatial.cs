@@ -15,7 +15,7 @@ public sealed partial class SceneRenderer
             return cached.Index;
         // Bound retention across background pages and document switching.
         if (_shapeIndexes.Count >= 8 && !_shapeIndexes.ContainsKey(page)) _shapeIndexes.Clear();
-        var index = new SpatialBoundsIndex(page.Shapes.Select(s => s.WorldBounds));
+        var index = new SpatialBoundsIndex(page.Shapes.Select(DataGraphicProjection.WorldBounds));
         _shapeIndexes[page] = new(revision, page.Shapes.Count, index);
         return index;
     }

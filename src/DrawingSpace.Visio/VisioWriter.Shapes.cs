@@ -100,7 +100,16 @@ internal sealed partial class VisioWriteContext
         GeometryCell("FlipX", value.FlipX ? 1 : 0, "BOOL"); GeometryCell("FlipY", value.FlipY ? 1 : 0, "BOOL");
         VisioXml.SetCell(node, "LockMoveX", shape.Locked ? 1 : 0, ""); VisioXml.SetCell(node, "LockMoveY", shape.Locked ? 1 : 0, "");
         var layer = page.Layers.FindIndex(l => l.Id == shape.LayerId); VisioXml.SetCell(node, "LayerMember", layer < 0 ? "" : layer.ToString(CultureInfo.InvariantCulture), "");
-        WriteStyle(node, shape.Style); WriteText(node, shape);
+        var exportStyle = shape.Style;
+        if (shape.DataGraphics.Count > 0)
+        {
+            exportStyle = shape.Style.Clone();
+            exportStyle.Fill = DataGraphicProjection.Fill(shape);
+        }
+        if (shape.DataBinding is not null || shape.DataGraphics.Count > 0)
+            Warn("DataFeaturesMaterialized", part,
+                "Shape-data values and evaluated fill are exported. Source links, baselines and overlay graphics require native DrawingSpace JSON.", id);
+        WriteStyle(node, exportStyle); WriteText(node, shape);
         WriteGeometry(node, shape.IsGroupAnchor && shape.Geometry.Count == 0 ? [] : ShapeOutlines.Create(shape), value.Width, value.Height, value.Shear, part, id);
         WriteConnectionPoints(node, shape, value.Width, value.Height);
         WriteProperties(node, shape); WriteImage(node, shape, part, id);

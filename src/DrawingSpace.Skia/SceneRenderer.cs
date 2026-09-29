@@ -30,18 +30,24 @@ public sealed partial class SceneRenderer : IDisposable
     public IReadOnlyDictionary<string, RouteResult> Routes(DiagramPage page, long revision, bool printing = false)
     {
         if (!ReferenceEquals(page, _routePage) || _revision != revision || _routePrinting != printing)
-        {
-            _routePage = page; _revision = revision; _routePrinting = printing; _routes.Clear();
-            var visibleEdges = page.Connectors.Where(c => page.IsVisible(c.LayerId) && (!printing || page.IsPrintable(c.LayerId))).ToArray();
-            if (visibleEdges.Length != 0)
-            {
-                var scene = RoutingScene.Capture(page);
-                foreach (var edge in visibleEdges) _routes[edge.Id] = _router.RouteSnapshot(scene, edge);
-            }
-            var analysis = LineJumpService.Analyze(visibleEdges, _routes);
-            _jumps = analysis.Jumps; LineJumpBudgetExceeded = analysis.BudgetExceeded;
-        }
+            RebuildRoutes(page, revision, printing);
         return _routes;
+    }
+
+    // Capturing LINQ predicates belong only on the cold path. Keeping them in Routes
+    // allocated a compiler-generated closure even when its cache was already valid.
+    private void RebuildRoutes(DiagramPage page, long revision, bool printing)
+    {
+        _routePage = null; _routes.Clear();
+        var visibleEdges = page.Connectors.Where(c => page.IsVisible(c.LayerId) && (!printing || page.IsPrintable(c.LayerId))).ToArray();
+        if (visibleEdges.Length != 0)
+        {
+            var scene = RoutingScene.Capture(page);
+            foreach (var edge in visibleEdges) _routes[edge.Id] = _router.RouteSnapshot(scene, edge);
+        }
+        var analysis = LineJumpService.Analyze(visibleEdges, _routes);
+        _jumps = analysis.Jumps; LineJumpBudgetExceeded = analysis.BudgetExceeded;
+        _revision = revision; _routePrinting = printing; _routePage = page;
     }
     public SKFont Font(ShapeStyle style)
     {
@@ -72,7 +78,7 @@ public sealed partial class SceneRenderer : IDisposable
             {
                 var shape = page.Shapes[candidates is null ? i : candidates[i]];
                 if ((shape.Kind == ShapeKind.Container) != containers || !Visible(shape.LayerId)) continue;
-                if (candidates is not null || visible is null || shape.WorldBounds.Intersects(visible.Value)) DrawShape(canvas, shape);
+                if (candidates is not null || visible is null || DataGraphicProjection.WorldBounds(shape).Intersects(visible.Value)) DrawShape(canvas, shape);
             }
         }
         DrawShapes(true);
@@ -95,9 +101,7 @@ public sealed partial class SceneRenderer : IDisposable
     {
         canvas.Save();
         canvas.Concat(ShapeGeometry.Matrix(shape.DrawingMatrix));
-        using var path = ShapeGeometry.Create(shape);
-        using var details = ShapeGeometry.Details(shape);
-        using var fill = new SKPaint { IsAntialias = true, Color = Color(shape.Style.Fill, shape.Style.Opacity) };
+        using var fill = new SKPaint { IsAntialias = true, Color = Color(DataGraphicProjection.Fill(shape), shape.Style.Opacity) };
         using var dash = shape.Style.Dashed ? SKPathEffect.CreateDash([6, 4], 0) : null;
         using var stroke = new SKPaint { IsAntialias = true, Color = Color(shape.Style.Stroke, shape.Style.Opacity), Style = SKPaintStyle.Stroke, StrokeWidth = (float)shape.Style.StrokeWidth, StrokeJoin = SKStrokeJoin.Round, PathEffect = dash };
         if (shape.Geometry.Count > 0)
@@ -111,11 +115,14 @@ public sealed partial class SceneRenderer : IDisposable
         }
         else
         {
+            using var path = ShapeGeometry.Create(shape);
+            using var details = ShapeGeometry.Details(shape);
             if (shape.Kind != ShapeKind.Annotation) canvas.DrawPath(path, fill);
             if (shape.Style.StrokeWidth > 0) { canvas.DrawPath(path, stroke); canvas.DrawPath(details, stroke); }
         }
         DrawImage(canvas, shape);
         DrawText(canvas, shape);
+        DrawDataGraphics(canvas, shape);
         canvas.Restore();
     }
     internal (IReadOnlyList<string> Lines, float X, float Y, float Width, float LineHeight, bool Left) Layout(Shape shape)
@@ -196,8 +203,19 @@ public sealed partial class SceneRenderer : IDisposable
     }
     public Connector? HitConnector(DiagramPage page, PointD point, long revision, double tolerance)
     {
+        ArgumentNullException.ThrowIfNull(page);
+        if (!point.IsFinite) throw new ArgumentOutOfRangeException(nameof(point));
+        if (!double.IsFinite(tolerance) || tolerance < 0) throw new ArgumentOutOfRangeException(nameof(tolerance));
         var routes = Routes(page, revision);
-        return page.Connectors.AsEnumerable().Reverse().FirstOrDefault(c => routes.TryGetValue(c.Id, out var route) && route.Points.Zip(route.Points.Skip(1), (a, b) => PointD.DistanceToSegment(point, a, b)).Any(d => d <= tolerance));
+        for (var i = page.Connectors.Count - 1; i >= 0; i--)
+        {
+            var connector = page.Connectors[i];
+            if (!routes.TryGetValue(connector.Id, out var route)) continue;
+            for (var segment = 1; segment < route.Points.Count; segment++)
+                if (PointD.DistanceToSegment(point, route.Points[segment - 1], route.Points[segment]) <= tolerance)
+                    return connector;
+        }
+        return null;
     }
     public static SKColor Color(string hex, double opacity = 1)
     {
@@ -210,6 +228,6 @@ public sealed partial class SceneRenderer : IDisposable
         foreach (var image in _images.Values) image.Image.Dispose(); _images.Clear();
         _fonts.Clear(); _fallbackTypeface?.Dispose(); _fallbackTypeface = null;
         foreach (var typeface in _fallbackStyles.Values.Distinct()) typeface.Dispose();
-        _fallbackStyles.Clear(); _routes.Clear(); _shapeIndexes.Clear();
+        _fallbackStyles.Clear(); _routes.Clear(); _shapeIndexes.Clear(); ClearDataGraphics();
     }
 }

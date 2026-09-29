@@ -5,7 +5,7 @@ using DrawingSpace.Visio;
 
 namespace DrawingSpace.App;
 
-internal sealed class BrowserWorkspaceStorage : IWorkspaceStorage, IBinaryWorkspaceStorage
+internal sealed partial class BrowserWorkspaceStorage : IWorkspaceStorage, IBinaryWorkspaceStorage
 {
     public async Task<string?> ReadRecoveryAsync(CancellationToken cancellationToken = default) { cancellationToken.ThrowIfCancellationRequested(); return await BrowserFiles.Load(); }
     public async Task SaveRecoveryAsync(string json, CancellationToken cancellationToken = default) { cancellationToken.ThrowIfCancellationRequested(); await BrowserFiles.Save(json); }

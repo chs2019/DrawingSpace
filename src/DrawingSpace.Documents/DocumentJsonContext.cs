@@ -9,6 +9,8 @@ namespace DrawingSpace.Documents;
 [JsonSerializable(typeof(DiagramGroup))]
 [JsonSerializable(typeof(DiagramLayer))]
 [JsonSerializable(typeof(Shape))]
+[JsonSerializable(typeof(ShapeDataBinding))]
+[JsonSerializable(typeof(ShapeDataGraphic))]
 [JsonSerializable(typeof(Connector))]
 [JsonSerializable(typeof(ShapeCell))]
 [JsonSerializable(typeof(CommentThread))]

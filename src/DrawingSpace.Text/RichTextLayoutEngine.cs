@@ -2,8 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using DrawingSpace.Core;
 using DrawingSpace.Documents;
 using DrawingSpace.Text.Internal;
@@ -12,10 +10,11 @@ using SkiaSharp;
 namespace DrawingSpace.Text;
 
 /// <summary>Bounded reusable rich-text layout cache. A caller-provided font resolver owns its returned typefaces.</summary>
-public sealed class RichTextLayoutEngine : IDisposable
+public sealed partial class RichTextLayoutEngine : IDisposable
 {
-    private readonly Dictionary<string, LinkedListNode<(string Key, ShapeTextLayout Layout)>> _cache = new(StringComparer.Ordinal);
-    private readonly LinkedList<(string Key, ShapeTextLayout Layout)> _lru = new();
+    private readonly Dictionary<string, LinkedListNode<CacheEntry>> _cache = new(StringComparer.Ordinal);
+    private readonly LinkedList<CacheEntry> _lru = new();
+    public long CacheMisses { get; private set; }
     private readonly ResolverFontMapper _mapper;
     private bool _disposed;
     public int Capacity { get; }
@@ -30,16 +29,16 @@ public sealed class RichTextLayoutEngine : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(shape);
-        var projection = new Shape
+        if (_cache.TryGetValue(shape.Id, out var cached))
         {
-            Text = shape.Text, Kind = shape.Kind, Width = shape.Width, Height = shape.Height, Style = shape.Style,
-            TextSpans = shape.TextSpans, Paragraphs = shape.Paragraphs, TextBounds = shape.TextBounds, TextRotation = shape.TextRotation,
-            Container = shape.Container, Id = "text-layout", Name = ""
-        };
-        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(ModelJson.Serialize(projection))));
-        if (_cache.TryGetValue(key, out var cached)) { _lru.Remove(cached); _lru.AddFirst(cached); return cached.Value.Layout; }
+            if (cached.Value.Inputs.Matches(shape))
+            { _lru.Remove(cached); _lru.AddFirst(cached); return cached.Value.Layout; }
+            _cache.Remove(shape.Id); _lru.Remove(cached); cached.Value.Layout.Dispose();
+        }
+        var inputs = new LayoutInputs(shape);
         var layout = ShapeTextLayout.Create(shape, _mapper);
-        var node = _lru.AddFirst((key, layout)); _cache.Add(key, node);
+        CacheMisses++;
+        var node = _lru.AddFirst(new CacheEntry(shape.Id, inputs, layout)); _cache.Add(shape.Id, node);
         while (_cache.Count > Capacity && _lru.Last is { } last)
         { _lru.RemoveLast(); _cache.Remove(last.Value.Key); last.Value.Layout.Dispose(); }
         return layout;
@@ -71,7 +70,7 @@ public sealed class RichTextLayoutEngine : IDisposable
     }
 }
 
-/// <summary>A shaped layout borrowed from its engine until the next cache eviction or Clear call.</summary>
+/// <summary>A shaped layout borrowed until its entry is replaced, evicted, cleared or its engine is disposed.</summary>
 public sealed class ShapeTextLayout : IDisposable
 {
     internal sealed record Paragraph(TextBlock Block, float X, float Y, int Utf16Start, string Text, bool Bullet);
