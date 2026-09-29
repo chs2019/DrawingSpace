@@ -65,6 +65,7 @@ public sealed partial class Shape
     {
         var clone = (Shape)MemberwiseClone();
         if (newIdentity) { clone.Id = Guid.NewGuid().ToString("N"); clone.VisioId = null; }
+        clone.DataBinding = DataBinding?.Clone(); clone.DataGraphics = [.. DataGraphics];
         clone.Style = Style.Clone(); clone.Data = new(Data); clone.Comments = [.. Comments];
         clone.Threads = Threads.Select(t => t.Clone()).ToList(); clone.LocalOverrides = [.. LocalOverrides];
         clone.Cells = Cells.ToDictionary(p => p.Key, p => p.Value.Clone(), StringComparer.OrdinalIgnoreCase);

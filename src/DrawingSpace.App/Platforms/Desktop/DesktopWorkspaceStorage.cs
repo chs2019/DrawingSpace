@@ -7,7 +7,7 @@ using Windows.ApplicationModel.DataTransfer;
 
 namespace DrawingSpace.App;
 
-internal sealed class DesktopWorkspaceStorage : IWorkspaceStorage, IBinaryWorkspaceStorage
+internal sealed partial class DesktopWorkspaceStorage : IWorkspaceStorage, IBinaryWorkspaceStorage
 {
     private static readonly string DirectoryPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DrawingSpace");
     private static string RecoveryPath => Path.Combine(DirectoryPath, "workspace.drawingspace.json");

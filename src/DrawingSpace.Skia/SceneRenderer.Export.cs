@@ -109,6 +109,7 @@ public sealed partial class SceneRenderer
         void Shape(Shape shape, string prefix)
         {
             Start("g"); Attribute("id", prefix + "shape-" + shape.Id); Attribute("role", "img"); Attribute("aria-label", string.IsNullOrEmpty(shape.Text) ? shape.Name : shape.Text);
+            var shapeFill = DataGraphicProjection.Fill(shape);
             var m = shape.DrawingMatrix; Attribute("transform", $"matrix({N(m.A)} {N(m.B)} {N(m.C)} {N(m.D)} {N(m.Tx)} {N(m.Ty)})");
             Start("title"); writer.WriteString(string.IsNullOrEmpty(shape.Text) ? shape.Name : shape.Text); writer.WriteEndElement();
             if (shape.Geometry.Count > 0)
@@ -116,13 +117,13 @@ public sealed partial class SceneRenderer
                 foreach (var figure in shape.Geometry)
                 {
                     using var path = ShapeGeometry.CreateFigure(shape, figure);
-                    Path(path, figure.Filled ? shape.Style.Fill : "none", figure.Stroked ? shape.Style.Stroke : "none", shape.Style.StrokeWidth, shape.Style.Opacity, shape.Style.Dashed);
+                    Path(path, figure.Filled ? shapeFill : "none", figure.Stroked ? shape.Style.Stroke : "none", shape.Style.StrokeWidth, shape.Style.Opacity, shape.Style.Dashed);
                 }
             }
             else
             {
                 using var geometry = ShapeGeometry.Create(shape); using var details = ShapeGeometry.Details(shape);
-                Path(geometry, shape.Kind == ShapeKind.Annotation ? "none" : shape.Style.Fill, shape.Style.Stroke, shape.Style.StrokeWidth, shape.Style.Opacity, shape.Style.Dashed);
+                Path(geometry, shape.Kind == ShapeKind.Annotation ? "none" : shapeFill, shape.Style.Stroke, shape.Style.StrokeWidth, shape.Style.Opacity, shape.Style.Dashed);
                 Path(details, "none", shape.Style.Stroke, shape.Style.StrokeWidth, shape.Style.Opacity);
             }
             if (shape.ImageData is { Length: > 0 } bytes && shape.ImageContentType is "image/png" or "image/jpeg" or "image/webp")
@@ -131,6 +132,13 @@ public sealed partial class SceneRenderer
                 Attribute("href", "data:" + shape.ImageContentType + ";base64," + Convert.ToBase64String(bytes)); writer.WriteEndElement();
             }
             Text(shape, prefix + "clip-" + shape.Id);
+            if (shape.DataGraphics.Count > 0)
+            {
+                Start("g"); Attribute("data-graphics-for", shape.Id);
+                Attribute("transform", $"translate({N(shape.X)} {N(shape.Y)})");
+                foreach (var graphic in DataGraphicsFor(shape)) Shape(graphic, prefix);
+                writer.WriteEndElement();
+            }
             writer.WriteEndElement();
         }
         var pages = new List<DiagramPage>(); var seen = new HashSet<string>(StringComparer.Ordinal); var current = page;
@@ -146,13 +154,13 @@ public sealed partial class SceneRenderer
             var prefix = "page-" + part.Id + "-";
             Start("g"); Attribute("id", prefix + "content");
             foreach (var shape in part.Shapes.Where(s => s.Kind == ShapeKind.Container && Visible(s.LayerId))) Shape(shape, prefix);
-            ClearCache(); var routes = Routes(part, 0);
+            ClearCache(); var routes = Routes(part, 0, printing: true);
             // Non-printable connectors cannot introduce jumps into a printed/exported route.
-            var jumps = LineJumpService.Analyze(part.Connectors.Where(c => Visible(c.LayerId)).ToArray(), routes);
+            var jumps = _jumps;
             foreach (var connector in part.Connectors.Where(c => Visible(c.LayerId)))
             {
                 if (!routes.TryGetValue(connector.Id, out var route) || route.Points.Count < 2) continue;
-                using var line = ConnectorPath(connector, route, jumps.Jumps.GetValueOrDefault(connector.Id));
+                using var line = ConnectorPath(connector, route, jumps.GetValueOrDefault(connector.Id));
                 Path(line, "none", connector.Color, connector.Width, dashed: connector.Dashed);
                 using var start = ArrowPath(route.Points[1], route.Points[0], connector.StartArrow, connector.Width);
                 using var end = ArrowPath(route.Points[^2], route.Points[^1], connector.EndArrow, connector.Width);

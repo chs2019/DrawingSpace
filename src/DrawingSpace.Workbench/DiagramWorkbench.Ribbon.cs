@@ -78,6 +78,13 @@ public sealed partial class DiagramWorkbench
     }
     private IEnumerable<RibbonGroup> DataGroups()
     {
+        yield return new("External Data", Command("Link Data", OfficeIcon.Data, () => ShowPane("externaldata"), true),
+            Command("Open CSV", OfficeIcon.Open, () => RunAsync(OpenDataFileAsync), true, () => _storage is ITabularWorkspaceStorage));
+        yield return new("Display Data",
+            Stack(Command("Color by Value", OfficeIcon.Fill, () => OpenGraphics(DataGraphicKind.ColorByValue), enabled: HasShapes),
+                Command("Data Bars", OfficeIcon.Data, () => OpenGraphics(DataGraphicKind.DataBar), enabled: HasShapes)),
+            Stack(Command("Icon Sets", OfficeIcon.Check, () => OpenGraphics(DataGraphicKind.IconSet), enabled: HasShapes),
+                Command("Text Callouts", OfficeIcon.Text, () => OpenGraphics(DataGraphicKind.TextCallout), enabled: HasShapes)));
         yield return new("Shape Data", Command("Shape Data", OfficeIcon.Data, () => ShowPane("data"), true), Command("Add Property", OfficeIcon.Add, () => RunAsync(AddDataAsync), true, HasShapes), Command("Export CSV", OfficeIcon.Export, () => RunAsync(ExportDataAsync), true));
         yield return new("Organization", Command("Layers", OfficeIcon.Layers, () => ShowPane("layers"), true), Command("New Layer", OfficeIcon.Add, () => RunAsync(AddLayerAsync), true));
         yield return new("Inspect", Command("Find Shape", OfficeIcon.Search, () => RunAsync(FindAsync), true), Command("Check Diagram", OfficeIcon.Check, () => ShowPane("validation"), true));

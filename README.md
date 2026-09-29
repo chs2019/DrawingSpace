@@ -30,6 +30,11 @@ The screenshot comes from the published main-branch application. Each Build also
 
 ### Advanced workflows
 
+**Data → Link Data / Open CSV** previews and applies stable-key CSV/TSV refreshes with local-edit conflicts, saved baselines and undo. **Display Data** provides non-destructive color-by-value, data bars, vector icon sets and shaped text callouts. The bounded source preview, four graphic families, native persistence and export boundaries are documented in [data features](docs/data-features.md).
+
+Text-cache hits use exact immutable input snapshots instead of per-frame JSON/UTF8/SHA256 work. Graphic projections are cached and their overhang is included in viewport culling. See [data/text benchmarks and limits](docs/data-features.md#budgets-and-performance).
+
+
 Capture connected selections as reusable masters, edit individual components in the master explorer, duplicate definitions, and detach complete instances without losing their geometry or glued connectors. See [master workflows and APIs](docs/masters.md).
 
 Shared route snapshots and spatial indexes reduce repeated page work. A retained 20,000-shape / 200-connector sparse routing fixture measured 1,683.3 ms → 21.1 ms median batch time, with approximately 99.67% less current-thread allocation. These are fixture-specific headless measurements, not application-wide performance guarantees; see [methodology and raw results](docs/performance.md).

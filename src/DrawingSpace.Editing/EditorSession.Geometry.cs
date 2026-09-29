@@ -23,7 +23,7 @@ public sealed partial class EditorSession
         foreach (var shape in operands)
         {
             if (Page.IsLocked(shape)) throw new InvalidOperationException("Unlock every operand before modifying its geometry.");
-            if (shape.GroupId is not null || shape.IsGroupAnchor || shape.MasterId is not null || shape.Container is not null || shape.Kind == ShapeKind.Container
+            if (shape.DataBinding is not null || shape.DataGraphics.Count != 0 || shape.GroupId is not null || shape.IsGroupAnchor || shape.MasterId is not null || shape.Container is not null || shape.Kind == ShapeKind.Container
                 || shape.FormulaParentId is not null || shape.UsesVisioCoordinates || shape.Cells.Count != 0)
                 throw new InvalidOperationException("Boolean replacement requires independent shapes without live group, master or ShapeSheet bindings. Create path copies to operate on their rendered outlines without changing the originals.");
         }
@@ -64,7 +64,7 @@ public sealed partial class EditorSession
         var operands = GetGeometryOperands(orderedIds);
         if (replacement.Geometry.Count == 0 || replacement.MasterId is not null || replacement.GroupId is not null || replacement.IsGroupAnchor
             || replacement.Container is not null || replacement.Cells.Count != 0 || replacement.UsesVisioCoordinates || replacement.FormulaParentId is not null
-            || replacement.ImageData is not null)
+            || replacement.ImageData is not null || replacement.DataBinding is not null || replacement.DataGraphics.Count != 0)
             throw new ArgumentException("Supply an independent editable vector result.", nameof(replacement));
         var primary = operands[0]; var ids = orderedIds.ToHashSet(StringComparer.Ordinal);
         var shapeIndex = Page.Shapes.ToDictionary(s => s.Id, StringComparer.Ordinal);

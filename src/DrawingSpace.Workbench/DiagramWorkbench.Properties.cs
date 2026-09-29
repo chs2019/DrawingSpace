@@ -6,13 +6,15 @@ public sealed partial class DiagramWorkbench
 {
     private void RebuildProperties()
     {
-        _properties.Children.Clear();
-        var title = _pane switch { "shapesheet" => "ShapeSheet", "masters" => "Document Masters", "containers" => "Containers", "richtext" => "Text Formatting", "connections" => "Connections", "import" => "Import Diagnostics", "data" => "Shape Data", "layers" => "Layers", "comments" => "Comments", "validation" => "Issues", "page" => "Page Setup", _ => "Format Shape" };
+        _properties.Children.Clear(); _properties.Spacing = 10;
+        var title = _pane switch { "externaldata" => "External Data", "datagraphics" => "Data Graphics", "shapesheet" => "ShapeSheet", "masters" => "Document Masters", "containers" => "Containers", "richtext" => "Text Formatting", "connections" => "Connections", "import" => "Import Diagnostics", "data" => "Shape Data", "layers" => "Layers", "comments" => "Comments", "validation" => "Issues", "page" => "Page Setup", _ => "Format Shape" };
         var header = new Grid { ColumnDefinitions = { new() { Width = new GridLength(1, GridUnitType.Star) }, new() { Width = GridLength.Auto } } };
         header.Children.Add(OfficeTheme.Text(title, 18));
         var close = new OfficeButton("", OfficeIcon.Close, action: () => ShowPane(_pane)) { Width = 26, Height = 26 };
         AutomationProperties.SetName(close, "Close task pane"); Grid.SetColumn(close, 1); header.Children.Add(close); _properties.Children.Add(header);
         _properties.Children.Add(OfficeTheme.Rule());
+        if (_pane == "externaldata") { BuildExternalDataPane(); return; }
+        if (_pane == "datagraphics") { BuildDataGraphicsPane(); return; }
         if (_pane == "shapesheet") { BuildShapeSheetPane(); return; }
         if (_pane == "masters") { BuildMastersPane(); return; }
         if (_pane == "containers") { BuildContainersPane(); return; }

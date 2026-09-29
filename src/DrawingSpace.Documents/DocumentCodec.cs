@@ -108,6 +108,7 @@ public static partial class DocumentCodec
         if (!shape.Bounds.IsFinite || Math.Abs(shape.X) > 1000000 || Math.Abs(shape.Y) > 1000000 || shape.Width is < 1 or > 100000 || shape.Height is < 1 or > 100000 || !double.IsFinite(shape.Rotation) || !double.IsFinite(shape.ShearX) || Math.Abs(shape.ShearX) > 1000) throw new InvalidDataException("Invalid shape geometry.");
         if (!Enum.IsDefined(shape.Kind) || shape.Style is null) throw new InvalidDataException("Invalid shape type or style.");
         Text(shape.Name, 1024); Text(shape.Text, 100000); TextMap(shape.Data, 4096); Cells(shape.Cells);
+        ValidateDataFeatures(shape);
         if (shape.Comments is null || shape.Comments.Count > 4096 || shape.Threads is null || shape.Threads.Count > 4096) throw new InvalidDataException("Invalid comments.");
         foreach (var comment in shape.Comments) Text(comment, 100000);
         foreach (var thread in shape.Threads)

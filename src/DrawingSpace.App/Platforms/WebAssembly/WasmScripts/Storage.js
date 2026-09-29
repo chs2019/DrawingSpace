@@ -71,6 +71,27 @@
         input.click();
       });
     },
+    async openTable() {
+      return new Promise((resolve, reject) => {
+        const input = document.createElement('input'); input.type = 'file';
+        input.accept = '.csv,.tsv,text/csv,text/tab-separated-values'; input.hidden = true;
+        document.body.append(input); let settled = false;
+        const finish = (value, error) => {
+          if (settled) return; settled = true; input.remove();
+          error ? reject(error) : resolve(value);
+        };
+        input.addEventListener('cancel', () => finish(''), { once: true });
+        input.addEventListener('change', async () => {
+          const file = input.files?.[0]; if (!file) return finish('');
+          try {
+            if (file.size > 4 * 1024 * 1024) throw new Error('CSV file exceeds the 4 MiB byte limit.');
+            const text = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+            finish(JSON.stringify({ name: file.name, text }));
+          } catch (error) { finish('', error); }
+        }, { once: true });
+        input.click();
+      });
+    },
     async download(name, base64, contentType) {
       const binary = atob(base64); const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
