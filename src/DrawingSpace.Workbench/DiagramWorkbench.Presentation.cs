@@ -68,7 +68,15 @@ public sealed partial class DiagramWorkbench
         finally { _refreshing = previous; }
     }
 
-    private void Refresh(bool rebuildProperties = true)
+    // Explicit pane navigation (master/component/cell selection) has state outside
+    // the document revision. Session notifications use the non-forcing overload.
+    private void Refresh()
+    {
+        _paneState.Invalidate();
+        Refresh(rebuildProperties: true);
+    }
+
+    private void Refresh(bool rebuildProperties)
     {
         if (_refreshing || _disposed) return;
         _refreshing = true;
