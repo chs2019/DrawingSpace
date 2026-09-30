@@ -7,11 +7,11 @@
 [![Pages](https://github.com/wieslawsoltes/DrawingSpace/actions/workflows/pages.yml/badge.svg)](https://github.com/wieslawsoltes/DrawingSpace/actions/workflows/pages.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[**Open DrawingSpace**](https://wieslawsoltes.github.io/DrawingSpace/) · [Architecture](docs/architecture.md) · [Compatibility](docs/compatibility.md) · [Data features](docs/data-features.md) · [Excel sources](docs/excel-data.md) · [Advanced editing](docs/advanced-editing.md) · [Keyboard shortcuts](docs/keyboard.md)
+[**Open DrawingSpace**](https://wieslawsoltes.github.io/DrawingSpace/) · [Architecture](docs/architecture.md) · [Compatibility](docs/compatibility.md) · [Data features](docs/data-features.md) · [Excel sources](docs/excel-data.md) · [Link and create from data](docs/manual-data-linking.md) · [Advanced editing](docs/advanced-editing.md) · [Keyboard shortcuts](docs/keyboard.md)
 
 DrawingSpace combines a Visio-style ribbon, searchable stencil pane, page tabs, rulers, and task panes with a real C# diagram editor. The browser application is **Uno WebAssembly with Skia rendering**, not a JavaScript mock-up or a screenshot of a desktop application. Native hosts use the same editing engine and controls.
 
-> **Status: 0.2.0-alpha.1.** Visio package interchange, bounded ShapeSheet evaluation, multi-shape master authoring, semantic containers, rich text, direct connector editing, linked tabular sources and data graphics are implemented. This is not complete Visio compatibility or pixel-identical UI. The public site serves the last verified main-branch Build; `build-info.json` identifies its exact source. See the [compatibility ledger](docs/compatibility.md).
+> **Status: 0.2.0-alpha.1.** Visio package interchange, bounded ShapeSheet evaluation, multi-shape master authoring, semantic containers, rich text, direct connector editing, linked tabular sources, manual row linking/shape creation and data graphics are implemented. This is not complete Visio compatibility or pixel-identical UI. The public site serves the last verified main-branch Build; `build-info.json` identifies its exact source. See the [compatibility ledger](docs/compatibility.md).
 
 ## Workspace
 
@@ -24,7 +24,7 @@ The screenshot comes from the published main-branch application. Each Build atta
 - **Direct editing:** stencil drag-and-drop and click insertion, marquee and multi-selection, movement, single-shape and shared selection resize/rotation handles, affine group transforms, inline shape and connector labels, snap-to-grid, dynamic guides, undo/redo, clipboard, duplication, alignment, distribution, grouping, and stacking order.
 - **Connected diagrams:** identity-based glued endpoints, straight and obstacle-aware orthogonal connectors, arrowheads, labels, AutoConnect insertion, editable routing segments/waypoints, line jumps, and directed-graph automatic layout with a cycle fallback.
 - **Document structure:** multiple named pages, dimensions/orientation, backgrounds, layers with independent visibility/locking/export inclusion, shape data, local comment threads, and basic validation.
-- **Linked data:** keyed CSV/TSV and read-only XLSX worksheet sources, refresh previews and conflicts, persistent baselines, four data-graphic families, and bounded source filtering/sorting.
+- **Linked data:** keyed CSV/TSV and read-only XLSX worksheet sources, conflict-safe automatic/manual row linking, persistent baselines, linked-shape creation, row/shape navigation, four data-graphic families, and retained source filtering/sorting/keyboard paging.
 - **Reusable controls and content:** custom ribbon, command buttons, vector icons, searchable stencils, color palette, page strip, source preview and Skia canvas; 43 original masters across five stencils with editable flowchart, organization and network samples.
 - **Local files:** validated native JSON, managed Visio package interchange, SVG/PNG/PDF and shape-data CSV export. Browser recovery uses IndexedDB; native recovery uses atomic local file replacement.
 
@@ -34,11 +34,13 @@ Text entry, scrolling, sliders, combo boxes and dialogs retain Uno platform prim
 
 Open **Data → Link Data**. The External Data pane provides **Open CSV** and **Open Excel**. For XLSX, choose a worksheet, header row, unique key column and stable source identity before previewing. Established links survive row reordering and shape-label changes. Refresh reports local/source conflicts and missing rows rather than deleting shapes or silently overwriting local edits.
 
-Source preview filtering and stable numeric/text header sorting operate on row ordinals, leaving source rows and the full-source refresh scope unchanged. At most five rows and three columns are realized at once.
+Source preview filtering and stable numeric/text header sorting operate on row ordinals, leaving source rows and the full-source refresh scope unchanged. At most five rows and three columns are realized at once. Select a row by its header or a cell; Arrow Up/Down, Page Up/Down and Home/End navigate while retaining keyboard focus and exact source keys.
+
+**Row Actions** links one row to selected shapes, reveals linked shapes or the selected shape's source row, and unlinks without deleting values or graphics. Replacing an established link requires a separate choice from overwriting local field conflicts. **Create Shape from Row** creates a linked rectangle at the snapped viewport center; shape, values and baseline are one undoable operation. The headless API also supports bounded atomic batch placement, explicit label columns and target layers. See [manual linking and creation](docs/manual-data-linking.md) and [resource limits](docs/compatibility.md#input-and-resource-limits).
 
 **Display Data** provides non-destructive color-by-value fills, data bars, vector icon sets and shaped text callouts. Graphics follow the owner's affine transform and appear in SVG/PNG/PDF. Native JSON retains links, accepted import baselines and live graphic rules; it does not embed complete source workbooks or credentials.
 
-XLSX imports **stored values and saved formula caches**, not Excel display formats or recalculated formulas. Numeric dates remain serial values, and zero-padded identifiers must be stored as text. Macros, external connections and formulas are not executed. Selected-table errors and invalid packages are reported explicitly. See [data workflows](docs/data-features.md) and the [Excel reader contract and limits](docs/excel-data.md).
+XLSX imports **stored values and saved formula caches**, not Excel display formats or recalculated formulas. Numeric dates remain serial values, and zero-padded identifiers must be stored as text. Macros, external connections and formulas are not executed. Selected-table errors and invalid packages are reported explicitly. Row dragging and creation from an arbitrary selected stencil/master are not implemented. See [data workflows](docs/data-features.md) and the [Excel reader contract and limits](docs/excel-data.md).
 
 ## Advanced diagram workflows
 
@@ -56,9 +58,11 @@ The **File** ribbon opens native JSON, VSDX, VSTX and VDX files. VSSX imports a 
 
 Shared immutable route snapshots and spatial indexes reduce repeated page work. A retained sparse fixture with 20,000 shapes and 200 connectors measured 1,683.3 ms → 21.1 ms median routing batch time; see [methodology and original results](docs/performance.md). These are fixture-specific component measurements, not application-wide guarantees.
 
-Exact-input text-layout caching removes repeated JSON/UTF8/SHA256 lookup work. Graphic projections are bounded and cached, including overhang in viewport culling. Connector jump geometry now orders jumps once in pooled storage and traverses the route once instead of filtering/sorting all jumps for every segment. Exact output comparisons and allocation regressions accompany the change.
+Exact-input text-layout caching removes repeated JSON/UTF8/SHA256 lookup work. Graphic projections are bounded and cached, including overhang in viewport culling. Connector jump geometry orders jumps once in pooled storage and traverses the route once instead of filtering/sorting all jumps for every segment. Crossing analysis skips spatial-tree construction when no eligible later connector can own a bridge, without removing route or segment-budget checks. Exact output comparisons and allocation regressions accompany these changes.
 
-Performance CI retains raw routing, crossing, data/text, source-view and connector-path samples. Tiered compilation is disabled for the measurement process to avoid comparing JIT tiers. Rendering-path measurements exclude routing, rasterization and UI. Full-document history and whole-page route invalidation remain; no million-shape, constant-time or frame-rate claim is made. See [data/text limits](docs/data-features.md#budgets-and-performance) and [source/path validation](docs/excel-data.md#renderer-and-validation).
+Unfiltered identity source views do not allocate row-count-sized ordinal arrays. A cached selected view position makes repeated cursor moves O(1), without re-filtering, sorting or scanning all rows. Arbitrary-key selection and query changes have separate costs. Retained page tabs and property forms avoid reconstruction for unchanged document/selection state; command registrations have bounded lifetimes. Recovery has a separate status indicator and cannot serialize an uncommitted drag preview. See [workbench contracts](docs/workbench-performance.md) and [source navigation](docs/manual-data-linking.md).
+
+Performance CI retains raw routing, crossing, data/text, source-view and connector-path samples. Tiered compilation is disabled for the measurement process to avoid comparing JIT tiers. Rendering-path measurements exclude routing, rasterization and UI. Full-document history and whole-page route invalidation remain; no million-shape, application-wide constant-time or frame-rate claim is made. See [data/text limits](docs/data-features.md#budgets-and-performance) and [source/path validation](docs/excel-data.md#renderer-and-validation).
 
 ## Run from source
 
@@ -100,21 +104,21 @@ In another terminal:
 npm run test:browser
 ```
 
-The six browser suites exercise normal editing, advanced gestures, master authoring, Boolean operations, data graphics and Excel sources. They use actual pointer/keyboard/file-picker input. Opt-in `?test=1` diagnostics expose **read-only** geometry and control bounds; they do not inject edits or replace input handling. Screenshots, console logs and results are uploaded by CI. `npm run test:browser:advanced` runs only the shared-transform/connector suite.
+The eight browser suites exercise normal editing, advanced gestures, master authoring, Boolean operations, data graphics, Excel sources, workbench/recovery state, and manual row linking/creation. They use actual pointer/keyboard/file-picker input. Opt-in `?test=1` diagnostics expose **read-only** geometry and control bounds; they do not inject edits or replace input handling. Screenshots, console logs and results are uploaded by CI. `npm run test:browser:advanced` runs only the shared-transform/connector suite.
 
-Engine tests cover transforms, persistence, routing, transactions, validation, formulas, master identities, Boolean/VSDX geometry, Unicode layout, data conflicts, package/XML limits, source-view identities, rendering equivalence and allocation regressions. Compilation alone is not independent Microsoft Visio certification or physical-device validation.
+Engine tests cover transforms, persistence, routing, transactions, validation, formulas, master identities, Boolean/VSDX geometry, Unicode layout, data conflicts, package/XML limits, source-view identities, linked-shape creation preflight, keyboard cursor invariants, rendering equivalence and allocation regressions. Compilation alone is not independent Microsoft Visio certification or physical-device validation.
 
 ## Twelve reusable packages
 
 | Package | Responsibility | Dependencies |
 | --- | --- | --- |
 | `DrawingSpace.Core` | Geometry, viewport, enums, spatial bounds | .NET only |
-| `DrawingSpace.Documents` | Model, validated JSON, tabular/XLSX sources, data graphics | Core |
+| `DrawingSpace.Documents` | Model, validated JSON, tabular/XLSX sources, source cursors, data graphics | Core |
 | `DrawingSpace.ShapeSheet` | Bounded parser, dimensional values, formula evaluation | .NET only |
 | `DrawingSpace.Visio` | OPC package reader/writer, VDX reader, format detection | Documents, ShapeSheet, Editing |
 | `DrawingSpace.Text` | HarfBuzz shaping, bidi/line breaking, paragraphs, range layout | Documents, SkiaSharp, HarfBuzzSharp |
 | `DrawingSpace.Routing` | Orthogonal routing, custom endpoints, crossings, route metrics | Documents |
-| `DrawingSpace.Editing` | Transactions, commands, formulas, masters, data refresh, affine snapshots | Routing |
+| `DrawingSpace.Editing` | Transactions, commands, formulas, masters, data refresh/creation, affine snapshots | Routing |
 | `DrawingSpace.Stencils` | Original masters and sample diagrams | Documents |
 | `DrawingSpace.Skia` | Paths, text, images, graphics, rendering, hit tests, exports | Routing, Text, SkiaSharp |
 | `DrawingSpace.Controls` | Custom Uno ribbon, buttons, gallery, palette, source grid, page strip | Stencils, Skia, Uno |
