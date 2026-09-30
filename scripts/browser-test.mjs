@@ -5,12 +5,10 @@ import fs from 'node:fs/promises';
 const base = process.env.DRAWINGSPACE_URL ?? 'http://127.0.0.1:4173/DrawingSpace/';
 const output = 'artifacts';
 await fs.mkdir(`${output}/screenshots`, { recursive: true });
-const results = [];
-const consoleMessages = [];
+const results = [], consoleMessages = [], errors = [];
 const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader'] });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, acceptDownloads: true });
 const page = await context.newPage();
-const errors = [];
 page.on('pageerror', error => { errors.push(error.message); consoleMessages.push(`ERROR ${error.stack}`); });
 page.on('console', message => consoleMessages.push(`${message.type()} ${message.text()}`));
 page.setDefaultTimeout(30000);
@@ -24,9 +22,21 @@ async function until(predicate, message, timeout = 15000) {
   }
   throw new Error(`${message}\nSnapshot: ${JSON.stringify(await snapshot())}`);
 }
+const visible = e => e.enabled && e.width > 0 && e.height > 0 && e.x >= 0 && e.y >= 0
+  && e.x + e.width / 2 < 1440 && e.y + e.height / 2 < 1000;
 async function click(name) {
-  const state = await until(s => s.elements.some(e => e.name === name && e.enabled && e.width > 0 && e.x >= 0 && e.x + e.width / 2 < 1440 && e.y >= 0 && e.y < 1000), `Missing visible command: ${name}`);
-  const element = state.elements.find(e => e.name === name && e.enabled && e.x >= 0 && e.x + e.width / 2 < 1440 && e.y >= 0 && e.y < 1000);
+  // A name can appear before deferred Uno layout has settled. Require repeated,
+  // equal control geometry, then send ordinary pointer input exactly once.
+  let previous, stable = 0;
+  const state = await until(s => {
+    const matches = s.elements.filter(e => e.name === name && visible(e));
+    if (matches.length !== 1) { previous = undefined; stable = 0; return false; }
+    const e = matches[0];
+    const key = JSON.stringify([e.x, e.y, e.width, e.height]);
+    stable = key === previous ? stable + 1 : 0; previous = key;
+    return stable >= 2;
+  }, `Missing or unsettled command: ${name}`);
+  const element = state.elements.find(e => e.name === name && visible(e));
   await page.mouse.click(element.x + element.width / 2, element.y + element.height / 2);
   await page.waitForTimeout(200);
 }
@@ -36,15 +46,12 @@ function center(state, shape) {
 async function check(name, action) {
   const started = Date.now();
   try {
-    await action();
-    results.push({ name, passed: true, milliseconds: Date.now() - started });
-    console.log(`PASS ${name}`);
+    await action(); results.push({ name, passed: true, milliseconds: Date.now() - started }); console.log(`PASS ${name}`);
   } catch (error) {
     results.push({ name, passed: false, milliseconds: Date.now() - started, error: error.stack });
     console.error(`FAIL ${name}: ${error.message}`);
     await fs.writeFile(`${output}/failure-${results.length}.json`, JSON.stringify(await snapshot().catch(() => null), null, 2));
     await page.screenshot({ path: `${output}/screenshots/failure-${results.length}.png` }).catch(() => {});
-    // Keep later independent scenarios observable; the aggregate assertion still fails the run.
     await page.keyboard.up('Alt'); await page.keyboard.up('Shift'); await page.mouse.up();
   }
 }
@@ -94,29 +101,46 @@ try {
     await click('Format Shape'); await until(s => s.elements.some(e => e.name === 'Position X'), 'Format pane not present');
     await page.screenshot({ path: `${output}/screenshots/DrawingSpace-format-pane.png` });
     await click('Close task pane');
+    await until(s => !s.elements.some(e => e.name === 'Close task pane') && s.shapes.some(n => n.text === 'Ready for review'), 'Closing the pane changed the edited drawing');
   });
   await check('SVG export downloads real paths and edited labels', async () => {
-    await click('File'); const downloadPromise = page.waitForEvent('download'); await click('SVG'); const download = await downloadPromise;
-    assert.ok(download.suggestedFilename().endsWith('.svg')); const file = await download.path(); const text = await fs.readFile(file, 'utf8');
-    assert.match(text, /<svg/); assert.match(text, /<path/);
-    const labels = await page.evaluate(svg => {
-      const document = new DOMParser().parseFromString(svg, 'image/svg+xml');
-      if (document.querySelector('parsererror')) throw new Error('SVG is not well-formed XML');
-      return [...document.querySelectorAll('[aria-label]')].map(node => node.getAttribute('aria-label')).concat([...document.querySelectorAll('text')].map(node => {
-        const spans = [...node.querySelectorAll('tspan')];
-        return spans.length ? spans.map(span => span.textContent).join(' ') : node.textContent;
-      }));
-    }, text);
-    assert.ok(labels.includes('Ready for review'), 'The exported SVG lost the edited label');
+    await click('File');
+    const before = await until(s => s.pages === 1 && s.nodes === 14 && !s.editingText && s.gesture === 'None'
+      && s.shapes.some(n => n.text === 'Ready for review'), 'The export drawing is not in its expected committed state');
+    const target = before.shapes.find(n => n.text === 'Ready for review');
+    // Exercise repeated exports without retries. Every exported file must retain
+    // the same shape identity and exact edited label; one failure fails the test.
+    for (let iteration = 0; iteration < 3; iteration++) {
+      const downloadPromise = page.waitForEvent('download'); await click('SVG'); const download = await downloadPromise;
+      assert.ok(download.suggestedFilename().endsWith('.svg'));
+      const text = await fs.readFile(await download.path(), 'utf8');
+      assert.match(text, /<svg/); assert.match(text, /<path/);
+      const exported = await page.evaluate(svg => {
+        const document = new DOMParser().parseFromString(svg, 'image/svg+xml');
+        if (document.querySelector('parsererror')) throw new Error('SVG is not well-formed XML');
+        return {
+          labels: [...document.querySelectorAll('[aria-label]')].map(node => node.getAttribute('aria-label')).concat([...document.querySelectorAll('text')].map(node => {
+            const spans = [...node.querySelectorAll('tspan')];
+            return spans.length ? spans.map(span => span.textContent).join(' ') : node.textContent;
+          })),
+          shapes: [...document.querySelectorAll('g[id]')].map(node => ({ id: node.id, label: node.getAttribute('aria-label') }))
+        };
+      }, text);
+      const after = await snapshot();
+      const evidence = { iteration, filename: download.suggestedFilename(), target, exported, beforeShapes: before.shapes, afterShapes: after?.shapes, svg: text };
+      await fs.writeFile(`${output}/svg-export-${iteration}-results.json`, JSON.stringify(evidence, null, 2));
+      assert.ok(exported.labels.includes('Ready for review'), `The exported SVG lost the edited label: ${JSON.stringify({ iteration, target, exported, afterShapes: after?.shapes })}`);
+      assert.ok(exported.shapes.some(s => s.id.endsWith('shape-' + target.id) && s.label === 'Ready for review'), 'Export lost the edited shape identity/label');
+      assert.equal(after.shapes.find(s => s.id === target.id)?.text, 'Ready for review', 'Export mutated the source label');
+    }
   });
   await check('Local recovery survives browser reload', async () => {
     await until(s => s.status.includes('Exported') || s.status.includes('saved'), 'No completed operation status');
     await page.waitForTimeout(1200); await page.reload({ waitUntil: 'domcontentloaded', timeout: 120000 });
     await until(s => s.ready && s.nodes === 14 && s.shapes.some(n => n.text === 'Ready for review'), 'Recovery did not restore the edited drawing', 120000);
     await page.locator('.uno-loader').waitFor({ state: 'hidden', timeout: 30000 });
-    await page.waitForTimeout(300); // Observe the final fitted viewport.
+    await page.waitForTimeout(300);
   });
-
   async function enter(name, value) { await click(name); await page.keyboard.press('Control+a'); await page.keyboard.type(value); }
   async function selectLabel(label) {
     const state = await snapshot(); const shape = state.shapes.find(s => s.text === label); assert.ok(shape, `Missing shape ${label}`);
@@ -134,8 +158,7 @@ try {
     await click('Developer'); await click('ShapeSheet'); await enter('Cell formula', '3 in'); await click('Apply formula');
     await until(s => s.shapes.some(n => n.id === original.id && Math.abs(n.width - 288) < .001), 'Formula did not resize the selected shape');
     await page.screenshot({path: `${output}/screenshots/DrawingSpace-shapesheet.png`});
-    await click('Undo'); await until(s => s.shapes.some(n => n.id === original.id && Math.abs(n.width - original.width) < .001), 'Formula undo lost original size');
-    await click('Close task pane');
+    await click('Undo'); await until(s => s.shapes.some(n => n.id === original.id && Math.abs(n.width - original.width) < .001), 'Formula undo lost original size'); await click('Close task pane');
   });
   await check('Rich text pane applies a selected range rather than whole-shape formatting', async () => {
     await selectLabel('Ready for review'); await click('Rich Text'); await click('Rich text content'); await page.keyboard.press('Control+a');
@@ -143,25 +166,19 @@ try {
     await page.screenshot({path: `${output}/screenshots/DrawingSpace-rich-text.png`}); await click('Close task pane');
   });
   await check('A real master can be created, inserted and undone through the UI', async () => {
-    await selectLabel('Ready for review'); await click('Masters'); await click('Create master from shape');
-    await enter('Master name', 'Approval master'); await page.keyboard.press('Enter');
-    await until(s => s.masters === 1, 'Master creation did not commit');
-    const count = (await snapshot()).nodes; await click('Insert master Approval master');
+    await selectLabel('Ready for review'); await click('Masters'); await click('Create master from shape'); await enter('Master name', 'Approval master'); await page.keyboard.press('Enter');
+    await until(s => s.masters === 1, 'Master creation did not commit'); const count = (await snapshot()).nodes; await click('Insert master Approval master');
     await until(s => s.nodes === count + 1 && s.shapes.some(n => n.selected && n.masterId), 'Master did not insert');
-    await click('Undo'); await until(s => s.nodes === count && s.masters === 1, 'Master insertion did not undo independently');
-    await click('Close task pane');
+    await click('Undo'); await until(s => s.nodes === count && s.masters === 1, 'Master insertion did not undo independently'); await click('Close task pane');
   });
   await check('Semantic container movement preserves its members and undo', async () => {
     const initial = await selectLabel('Ready for review'); const child = initial.shapes.find(s => s.selected);
     await click('Containers'); await click('Container around selection');
-    const state = await until(s => s.shapes.some(n => n.id === child.id && n.containerId), 'Container membership was not assigned');
-    const container = state.shapes.find(s => s.selected); assert.ok(container);
-    const a = screen(state, {x:container.x + container.width / 2, y:container.y + 12});
-    await drag(a, {x:a.x + 45, y:a.y + 30});
+    const state = await until(s => s.shapes.some(n => n.id === child.id && n.containerId), 'Container membership was not assigned'); const container = state.shapes.find(s => s.selected); assert.ok(container);
+    const a = screen(state, {x:container.x + container.width / 2, y:container.y + 12}); await drag(a, {x:a.x + 45, y:a.y + 30});
     await until(s => s.shapes.some(n => n.id === child.id && n.x !== child.x), 'Container drag did not move its member');
     await click('Undo'); await until(s => s.shapes.some(n => n.id === child.id && Math.abs(n.x - child.x) < .001), 'Container movement undo failed');
-    await click('Undo'); await until(s => !s.shapes.find(n => n.id === child.id)?.containerId, 'Container insertion undo failed');
-    await click('Close task pane');
+    await click('Undo'); await until(s => !s.shapes.find(n => n.id === child.id)?.containerId, 'Container insertion undo failed'); await click('Close task pane');
   });
   await check('Connector endpoint can be detached with pointer drag and restored by undo', async () => {
     const state = await snapshot(); const edge = state.connectors[0]; assert.ok(edge?.route?.length >= 2);
@@ -173,8 +190,7 @@ try {
   });
   await check('Visible segment grips insert and move waypoints without a keyboard modifier', async () => {
     const state = await snapshot(); const edge = state.connectors.find(c => c.selected); assert.ok(edge);
-    const p = {x:(edge.route[0].x + edge.route[1].x)/2,y:(edge.route[0].y + edge.route[1].y)/2};
-    const a = screen(state,p); await drag(a,{x:a.x+45,y:a.y+12});
+    const p = {x:(edge.route[0].x + edge.route[1].x)/2,y:(edge.route[0].y + edge.route[1].y)/2}; const a = screen(state,p); await drag(a,{x:a.x+45,y:a.y+12});
     await until(s => s.connectors.some(c => c.id === edge.id && c.waypointCount > 0), 'Segment grip did not insert a waypoint');
     await click('Undo'); await until(s => s.connectors.some(c => c.id === edge.id && c.waypointCount === 0), 'Waypoint insertion did not undo');
   });
@@ -182,28 +198,20 @@ try {
     const state = await snapshot(); const edge = state.connectors.find(c => c.selected); assert.ok(edge);
     const p = {x:(edge.route[0].x + edge.route[1].x)/2,y:(edge.route[0].y + edge.route[1].y)/2}; const a = screen(state,p);
     const expected = { x: p.x + 45 / state.zoom, y: p.y + 12 / state.zoom };
-    await page.keyboard.down('Alt');
-    try { await drag(a,{x:a.x+45,y:a.y+12}); }
-    finally { await page.keyboard.up('Alt'); }
-    // A preview already contains a waypoint. Wait for the released pointer's final
-    // coordinate, not an earlier preview that can put the next click outside the grip.
-    const after = await until(s => s.gesture === 'None' && s.connectors.some(c => c.id === edge.id
-      && c.waypoints.some(w => Math.hypot(w.x - expected.x, w.y - expected.y) < 1)), 'Waypoint did not reach the completed drag position');
+    await page.keyboard.down('Alt'); try { await drag(a,{x:a.x+45,y:a.y+12}); } finally { await page.keyboard.up('Alt'); }
+    const after = await until(s => s.gesture === 'None' && s.connectors.some(c => c.id === edge.id && c.waypoints.some(w => Math.hypot(w.x - expected.x, w.y - expected.y) < 1)), 'Waypoint did not reach the completed drag position');
     const point = screen(after,after.connectors.find(c => c.id === edge.id).waypoints[0]);
-    await page.keyboard.down('Shift');
-    try { await page.mouse.click(point.x,point.y); }
-    finally { await page.keyboard.up('Shift'); }
+    await page.keyboard.down('Shift'); try { await page.mouse.click(point.x,point.y); } finally { await page.keyboard.up('Shift'); }
     await until(s => s.connectors.some(c => c.id === edge.id && c.waypointCount === 0), 'Waypoint was not removed');
   });
   await check('VSDX export and binary file-picker import round-trip the live drawing', async () => {
     await click('File'); const downloadPromise = page.waitForEvent('download'); await click('VSDX'); const download = await downloadPromise;
     const bytes = await fs.readFile(await download.path()); assert.equal(bytes[0],0x50); assert.equal(bytes[1],0x4b);
     const saved = page.waitForEvent('download'); await click('Save'); await saved; await until(s => !s.dirty, 'Save did not mark the current revision');
-    const count = (await snapshot()).nodes; const chooserPromise = page.waitForEvent('filechooser'); await click('Open');
-    const chooser = await chooserPromise; await chooser.setFiles({name:'roundtrip.vsdx',mimeType:'application/vnd.ms-visio.drawing',buffer:bytes});
+    const count = (await snapshot()).nodes; const chooserPromise = page.waitForEvent('filechooser'); await click('Open'); const chooser = await chooserPromise;
+    await chooser.setFiles({name:'roundtrip.vsdx',mimeType:'application/vnd.ms-visio.drawing',buffer:bytes});
     await until(s => s.nodes === count && s.status.startsWith('Opened roundtrip.vsdx'), 'Binary Visio file did not open');
-    assert.ok((await snapshot()).shapes.some(s => s.text === 'Ready for review'));
-    await page.screenshot({path: `${output}/screenshots/DrawingSpace-visio-import.png`});
+    assert.ok((await snapshot()).shapes.some(s => s.text === 'Ready for review')); await page.screenshot({path: `${output}/screenshots/DrawingSpace-visio-import.png`});
   });
   await check('VSSX import adds masters without replacing the current drawing', async () => {
     const state = await snapshot(); const pending = page.waitForEvent('download'); await click('VSSX'); const download = await pending; const bytes = await fs.readFile(await download.path());
@@ -212,8 +220,7 @@ try {
     await until(s => s.masters > state.masters && s.nodes === state.nodes, 'Stencil library did not merge into the drawing');
     await page.screenshot({path: `${output}/screenshots/DrawingSpace-master-library.png`});
   });
-  assert.ok(results.every(result => result.passed), 'One or more browser scenarios failed');
-  assert.deepEqual(errors, [], 'The browser reported JavaScript or WebAssembly errors');
+  assert.ok(results.every(result => result.passed), 'One or more browser scenarios failed'); assert.deepEqual(errors, [], 'The browser reported JavaScript or WebAssembly errors');
   console.log(`Validated ${results.length} browser scenarios at ${base}`);
 } catch (error) {
   results.push({ name: 'Failure', passed: false, error: error.stack });
@@ -222,6 +229,5 @@ try {
   console.error(error); process.exitCode = 1;
 } finally {
   await fs.writeFile(`${output}/browser-results.json`, JSON.stringify({ url: base, results, errors }, null, 2));
-  await fs.writeFile(`${output}/browser-console.log`, consoleMessages.join('\n'));
-  await browser.close();
+  await fs.writeFile(`${output}/browser-console.log`, consoleMessages.join('\n')); await browser.close();
 }
