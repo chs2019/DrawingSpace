@@ -7,7 +7,7 @@ public sealed partial class DiagramWorkbench
     private OfficeButton Command(string label, OfficeIcon icon, Action action, bool large = false, Func<bool>? enabled = null, string? tooltip = null)
     {
         var button = new OfficeButton(label, icon, large, () => { Surface.FinishTextEdit(true); Guard(action); }) { VerticalAlignment = VerticalAlignment.Top };
-        if (enabled is not null) { _bindings.Add((button, enabled)); button.IsEnabled = enabled(); }
+        if (enabled is not null) { (_activeBindings ?? _bindings).Add((button, enabled)); button.IsEnabled = enabled(); }
         if (tooltip is not null) ToolTipService.SetToolTip(button, tooltip);
         return button;
     }
@@ -17,21 +17,21 @@ public sealed partial class DiagramWorkbench
     {
         var panel = OfficeTheme.Column(items); panel.Spacing = 0; return panel;
     }
-    private bool HasShapes() => Session.EditableShapes.Count > 0;
+    private bool HasShapes() => Session.Page.Shapes.Any(s => Session.Selection.Contains(s.Id) && !Session.Page.IsLocked(s));
     private bool HasSelection() => Session.Selection.Count > 0;
     private void BuildRibbon()
     {
-        _ribbon.AddTab("File", FileGroups);
-        _ribbon.AddTab("Home", HomeGroups);
-        _ribbon.AddTab("Insert", InsertGroups);
-        _ribbon.AddTab("Design", DesignGroups);
-        _ribbon.AddTab("Data", DataGroups);
-        _ribbon.AddTab("Process", ProcessGroups);
-        _ribbon.AddTab("Review", ReviewGroups);
-        _ribbon.AddTab("View", ViewGroups);
-        _ribbon.AddTab("Developer", DeveloperGroups);
-        _ribbon.AddTab("Help", HelpGroups);
-        _ribbon.TabChanged += _ => Refresh();
+        AddRibbonTab("File", FileGroups);
+        AddRibbonTab("Home", HomeGroups);
+        AddRibbonTab("Insert", InsertGroups);
+        AddRibbonTab("Design", DesignGroups);
+        AddRibbonTab("Data", DataGroups);
+        AddRibbonTab("Process", ProcessGroups);
+        AddRibbonTab("Review", ReviewGroups);
+        AddRibbonTab("View", ViewGroups);
+        AddRibbonTab("Developer", DeveloperGroups);
+        AddRibbonTab("Help", HelpGroups);
+        _ribbon.TabChanged += _ => Refresh(rebuildProperties: false);
     }
     private IEnumerable<RibbonGroup> FileGroups()
     {

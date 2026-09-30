@@ -17,6 +17,7 @@ internal static class BrowserDiagnostics
     public static void Attach(EditorSession session, DiagramWorkbench workbench, Window window)
     {
         if (!BrowserFiles.IsTestMode()) return;
+        long observation = 0;
         void Publish()
         {
             if (workbench.XamlRoot is null) return;
@@ -24,8 +25,18 @@ internal static class BrowserDiagnostics
             using (var json = new Utf8JsonWriter(stream))
             {
                 var surface = workbench.Surface; var origin = surface.TransformToVisual(null).TransformPoint(new Point());
-                json.WriteStartObject(); json.WriteBoolean("ready", surface.ActualWidth > 0 && surface.ActualHeight > 0);
+                json.WriteStartObject(); json.WriteNumber("observation", ++observation); json.WriteBoolean("ready", surface.ActualWidth > 0 && surface.ActualHeight > 0);
                 json.WriteString("gesture", surface.ActiveGesture); json.WriteString("lastPointerInput", surface.LastPointerInput);
+                json.WriteNumber("revision", session.Revision);
+                json.WriteString("undoName", session.UndoName); json.WriteString("redoName", session.RedoName);
+                json.WriteNumber("propertyRebuilds", workbench.PropertyRebuildCount);
+                json.WriteNumber("pageStripRebuilds", workbench.PageStripRebuildCount);
+                json.WriteNumber("commandBindings", workbench.RegisteredCommandBindingCount);
+                json.WriteString("recoveryStatus", workbench.RecoveryStatusText);
+                json.WriteNumber("recoveryWrites", workbench.RecoveryWriteCount);
+                json.WriteNumber("recoveryRevision", workbench.RecoveryRevision);
+                json.WriteBoolean("recoveryCurrent", workbench.IsRecoveryCurrent);
+                json.WriteString("activePageId", session.ActivePageId);
                 json.WriteString("tool", session.Tool.ToString()); json.WriteString("title", session.Document.Title);
                 json.WriteNumber("nodes", session.Page.Shapes.Count); json.WriteNumber("edges", session.Page.Connectors.Count);
                 json.WriteNumber("masters", session.Document.Masters.Count); json.WriteNumber("groups", session.Page.Groups.Count); json.WriteBoolean("dirty", session.IsDirty); json.WriteNumber("pages", session.Document.Pages.Count); json.WriteNumber("selection", session.Selection.Count);
@@ -89,6 +100,7 @@ internal static class BrowserDiagnostics
                         {
                             var p = element.TransformToVisual(null).TransformPoint(new Point());
                             json.WriteStartObject(); json.WriteString("name", name); json.WriteString("type", element.GetType().Name);
+                            json.WriteString("automationId", AutomationProperties.GetAutomationId(element));
                             json.WriteNumber("x", p.X); json.WriteNumber("y", p.Y); json.WriteNumber("width", element.ActualWidth); json.WriteNumber("height", element.ActualHeight);
                             json.WriteBoolean("enabled", element is not Microsoft.UI.Xaml.Controls.Control control || control.IsEnabled); json.WriteEndObject();
                         }

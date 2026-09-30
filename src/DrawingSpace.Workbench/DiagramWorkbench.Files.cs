@@ -69,7 +69,7 @@ public sealed partial class DiagramWorkbench
         var json = DocumentCodec.Save(document);
         await _storage.SaveAsync(SafeName(Session.Document.Title) + ".drawingspace.json", Encoding.UTF8.GetBytes(json), "application/json");
         if (ReferenceEquals(document, Session.Document) && revision == Session.Revision)
-        { await _storage.SaveRecoveryAsync(json); if (ReferenceEquals(document, Session.Document) && revision == Session.Revision) Session.MarkSaved(); }
+        { await SaveRecoverySnapshotAsync(document, revision, json); if (ReferenceEquals(document, Session.Document) && revision == Session.Revision) Session.MarkSaved(); }
         ShowStatus(ReferenceEquals(document, Session.Document) && revision == Session.Revision ? "Drawing saved" : "Snapshot saved; newer changes remain unsaved");
     }
     private async Task ExportAsync(string format)
