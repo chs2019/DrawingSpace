@@ -58,7 +58,7 @@ namespace DrawingSpace.Text.Internal
             {
                 if (candidate is not null && !ReferenceEquals(candidate, SKTypeface.Empty))
                     candidate.Dispose();
-                return SKTypeface.Default;
+                return PackagedOpenSans.Get(style.FontWeight + extraWeight, style.FontItalic);
             }
             return candidate;
         }
