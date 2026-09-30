@@ -16,6 +16,8 @@ public sealed class TabularDataCursor
     public bool Descending { get; private set; }
     public bool Numeric { get; private set; }
     public string? SelectedKey { get; private set; }
+    /// <summary>The selected key's position in this view, or -1 when hidden or absent.</summary>
+    public int SelectedViewIndex { get; private set; } = -1;
     public int FirstRow { get; private set; }
     public int FirstColumn { get; private set; }
 
@@ -29,15 +31,19 @@ public sealed class TabularDataCursor
     {
         // Build first: failed queries must retain the prior view and selection.
         var view = TabularDataView.Create(Source, filter, sortColumn, descending, numeric);
+        var selectedIndex = SelectedKey is { } key ? FindKey(view, key) : -1;
         View = view; FilterText = filter; SortColumn = sortColumn;
         Descending = descending; Numeric = numeric; FirstRow = 0;
+        SelectedViewIndex = selectedIndex;
     }
 
     public void SelectKey(string? key)
     {
         if (key is not null && !Source.TryGetRow(key, out _))
             throw new ArgumentException("Unknown source row key.", nameof(key));
-        SelectedKey = key;
+        if (SelectedKey == key) return;
+        var index = key is null ? -1 : FindKey(View, key);
+        SelectedKey = key; SelectedViewIndex = index;
     }
 
     /// <summary>Reveal an existing row. Explicitly clears a hiding filter but retains sort order.</summary>
@@ -45,9 +51,41 @@ public sealed class TabularDataCursor
     {
         ArgumentNullException.ThrowIfNull(key);
         if (!Source.TryGetRow(key, out _)) throw new ArgumentException("Unknown source row key.", nameof(key));
-        var index = FindKey(key);
-        if (index < 0) { Query("", SortColumn, Descending, Numeric); index = FindKey(key); }
-        SelectedKey = key; FirstRow = index / PageRows * PageRows;
+        var index = SelectedKey == key ? SelectedViewIndex : FindKey(View, key);
+        if (index < 0)
+        {
+            Query("", SortColumn, Descending, Numeric);
+            index = FindKey(View, key);
+        }
+        SelectVisibleRow(index);
+    }
+
+    /// <summary>
+    /// Select a view position and reveal its row page. Does not scan or rebuild the view,
+    /// clear filters, or allocate. Returns whether the selected key changed.
+    /// </summary>
+    public bool SelectVisibleRow(int index)
+    {
+        if ((uint)index >= (uint)View.RowOrdinals.Count)
+            throw new ArgumentOutOfRangeException(nameof(index));
+        var key = View[index][Source.KeyColumn];
+        var changed = key != SelectedKey;
+        SelectedKey = key; SelectedViewIndex = index; FirstRow = index / PageRows * PageRows;
+        return changed;
+    }
+
+    /// <summary>
+    /// Move selection by a signed row offset in O(1), saturating at the view bounds.
+    /// With no visible selection, select the first row of the current page instead.
+    /// An empty view remains empty; navigation never removes a filter.
+    /// </summary>
+    public bool MoveSelection(int rows)
+    {
+        var count = View.RowOrdinals.Count;
+        if (count == 0) return false;
+        var index = SelectedViewIndex < 0 ? FirstRow
+            : (int)Math.Clamp((long)SelectedViewIndex + rows, 0L, count - 1L);
+        return SelectVisibleRow(index);
     }
 
     public void MoveRows(int pages)
@@ -55,9 +93,9 @@ public sealed class TabularDataCursor
     public void MoveColumns(int pages)
         => FirstColumn = Move(FirstColumn, pages, Source.Columns.Count, PageColumns);
 
-    private int FindKey(string key)
+    private int FindKey(TabularDataView view, string key)
     {
-        for (var i = 0; i < View.RowOrdinals.Count; i++) if (View[i][Source.KeyColumn] == key) return i;
+        for (var i = 0; i < view.RowOrdinals.Count; i++) if (view[i][Source.KeyColumn] == key) return i;
         return -1;
     }
 

@@ -51,6 +51,18 @@ public sealed partial class DiagramWorkbench
                 _dataReport = $"Row {row}: {_dataPlan.ChangedShapes} shapes to link; {_dataPlan.TotalIssues} warnings. Choose Apply Refresh to commit.";
                 ShowStatus(_dataReport); RebuildProperties();
             }));
+            content.Children.Add(Item("Create Shape from Row", OfficeIcon.Add, () =>
+            {
+                var row = RowKey();
+                var center = Surface.ViewCenter;
+                if (Session.SnapToGrid && double.IsFinite(Session.GridSize) && Session.GridSize > 0)
+                    center = new(Math.Round(center.X / Session.GridSize) * Session.GridSize,
+                        Math.Round(center.Y / Session.GridSize) * Session.GridSize);
+                _dataPlan = null;
+                Session.CreateShapeFromDataRow(table, row, center);
+                Surface.FocusCanvas();
+                ShowStatus("Created a linked rectangle for row " + row + ". Shape and data can be undone together.");
+            }));
             content.Children.Add(Item("Linked Shapes", OfficeIcon.Search, () =>
             {
                 var row = RowKey(); _dataPlan = null;

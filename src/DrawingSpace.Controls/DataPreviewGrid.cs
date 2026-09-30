@@ -61,26 +61,30 @@ public sealed class DataPreviewGrid : UserControl
     {
         var changed = _cursor.SelectedKey != key;
         _cursor.SelectKey(key);
-        // Keep the row controls alive when only selection changes: this also keeps
-        // keyboard focus out of the drawing canvas and avoids rebuilding cell text.
+        // Keep controls and keyboard focus alive when only selection changes.
         UpdateSelection(); FocusSelectedRow(FocusState.Pointer);
         if (changed) RowSelected?.Invoke(key);
     }
 
-    private void MoveSelectedRow(int direction)
+    private void MoveSelectedRow(VirtualKey key)
     {
         var count = _cursor.View.RowOrdinals.Count;
         if (count == 0) return;
-        var row = _cursor.FirstRow;
-        for (var i = 0; i < count; i++)
-            if (_cursor.View[i][_cursor.Source.KeyColumn] == _cursor.SelectedKey)
-            { row = Math.Clamp(i + direction, 0, count - 1); break; }
-        var key = _cursor.View[row][_cursor.Source.KeyColumn];
-        var changed = key != _cursor.SelectedKey; var first = _cursor.FirstRow;
-        _cursor.RevealKey(key);
+        var first = _cursor.FirstRow;
+        // The cursor caches the selected view position. Repeated navigation is O(1)
+        // and never clears a filter, sorts again or scans the complete source table.
+        var changed = key switch
+        {
+            VirtualKey.Home => _cursor.SelectVisibleRow(0),
+            VirtualKey.End => _cursor.SelectVisibleRow(count - 1),
+            VirtualKey.PageUp => _cursor.MoveSelection(-TabularDataCursor.PageRows),
+            VirtualKey.PageDown => _cursor.MoveSelection(TabularDataCursor.PageRows),
+            VirtualKey.Up => _cursor.MoveSelection(-1),
+            _ => _cursor.MoveSelection(1)
+        };
         if (first != _cursor.FirstRow) Render(); else UpdateSelection();
         FocusSelectedRow(FocusState.Keyboard);
-        if (changed) RowSelected?.Invoke(key);
+        if (changed) RowSelected?.Invoke(_cursor.SelectedKey!);
     }
 
     private void UpdateSelection()
@@ -130,8 +134,8 @@ public sealed class DataPreviewGrid : UserControl
             ToolTipService.SetToolTip(button, $"{key}: {count} linked shapes on this page");
             button.KeyDown += (_, e) =>
             {
-                if (e.Key is VirtualKey.Up or VirtualKey.Down)
-                { MoveSelectedRow(e.Key == VirtualKey.Up ? -1 : 1); e.Handled = true; }
+                if (e.Key is VirtualKey.Up or VirtualKey.Down or VirtualKey.PageUp or VirtualKey.PageDown or VirtualKey.Home or VirtualKey.End)
+                { MoveSelectedRow(e.Key); e.Handled = true; }
             };
             _rows.Add(new(key, button, [], r % 2 == 1 ? "#F8FAFC" : "#FFFFFF"));
             Grid.SetRow(button, r + 1); grid.Children.Add(button);

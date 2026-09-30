@@ -15,6 +15,7 @@ page.on('console', m => messages.push(`${m.type()} ${m.text()}`));
 const snapshot = () => page.evaluate(() => globalThis.drawingSpaceSnapshot);
 const visible = e => e.enabled && e.width > 0 && e.height > 0 && e.x >= 0 && e.y >= 0
   && e.x + e.width / 2 < size.width && e.y + e.height / 2 < size.height;
+const contentOf = shapes => shapes.map(({ selected, ...shape }) => shape);
 async function until(predicate, message, timeout = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
@@ -41,15 +42,13 @@ async function click(name) {
 async function enter(name, text) { await click(name); await page.keyboard.press('Control+a'); await page.keyboard.type(text); }
 async function action(name) { await click('Source Row Actions'); await click(name); }
 async function selectSingleCanvasShape(id) {
-  // Pressing an already-selected shape preserves the selection for group dragging.
-  // Clear it with a real blank-canvas click before selecting the topmost fixture.
-  let previous = '', observation = -1, stable = 0, target;
+  // An already-selected shape preserves the whole selection for group dragging.
+  // Clear it with a real blank-canvas click, then select the topmost fixture.
   async function settledPoint(pointFor, description) {
-    previous = ''; observation = -1; stable = 0;
+    let previous = '', observation = -1, stable = 0, target;
     await until(state => {
       if (state.observation === observation || state.gesture !== 'None') return false;
-      observation = state.observation;
-      target = pointFor(state);
+      observation = state.observation; target = pointFor(state);
       if (!target) { stable = 0; previous = ''; return false; }
       const geometry = JSON.stringify([state.activePageId, state.revision,
         state.canvasX, state.canvasY, state.canvasWidth, state.canvasHeight,
@@ -61,8 +60,7 @@ async function selectSingleCanvasShape(id) {
   }
   await settledPoint(state => {
     const x = 40, y = 40;
-    const worldX = (x - state.panX) / state.zoom;
-    const worldY = (y - state.panY) / state.zoom;
+    const worldX = (x - state.panX) / state.zoom, worldY = (y - state.panY) / state.zoom;
     if (state.shapes.some(s => worldX >= s.x - 8 && worldX <= s.x + s.width + 8
       && worldY >= s.y - 8 && worldY <= s.y + s.height + 8)) return null;
     return { x: state.canvasX + x, y: state.canvasY + y };
@@ -137,8 +135,10 @@ try {
   await check('Show Linked Row clears a hiding filter and Linked Shapes selects without editing', async () => {
     let state = await snapshot(); const before = state; const shape = state.shapes.at(-1);
     const selected = await selectSingleCanvasShape(shape.id);
-    assert.equal(selected.revision, before.revision);
-    assert.deepEqual(selected.shapes.map(({selected, ...s}) => s), before.shapes.map(({selected, ...s}) => s));
+    // Canvas clicks finish an empty move transaction, which may advance the renderer
+    // revision. Assert content/history, not an unsupported input-revision guarantee.
+    assert.equal(selected.undoName, before.undoName); assert.equal(selected.redoName, before.redoName);
+    assert.deepEqual(contentOf(selected.shapes), contentOf(before.shapes));
     await enter('Data filter', 'Bob'); await click('Filter data rows');
     state = await until(s => s.elements.some(e => e.name === 'Data cell 1 Id: 0002'), 'Hiding filter missing');
     await action('Show Linked Row');
@@ -177,6 +177,40 @@ try {
     const after = await until(s => s.status.startsWith('Row 14:'), 'Keyboard selection did not retain the exact source key');
     assert.equal(after.revision, before.revision); assert.deepEqual(after.shapes, before.shapes);
     assert.equal(after.undoName, before.undoName); assert.equal(after.redoName, before.redoName);
+  });
+  await check('Home End and page keys retain focus and exact keys without editing', async () => {
+    const before = await snapshot(); await click('Clear data view'); await click('Select data row 12');
+    await page.keyboard.press('End');
+    await until(s => s.elements.some(e => e.name === 'Data cell 1 Id: 18'), 'End did not reach the final source page');
+    await page.keyboard.press('PageUp');
+    await until(s => s.elements.some(e => e.name === 'Data cell 1 Id: 13'), 'PageUp lost focus after End');
+    await page.keyboard.press('Home');
+    await until(s => s.elements.some(e => e.name === 'Data cell 1 Id: 0001'), 'Home did not reach the first row');
+    await page.keyboard.press('PageDown');
+    await until(s => s.elements.some(e => e.name === 'Data cell 1 Id: 13'), 'PageDown lost focus after Home');
+    await action('Link to Selected Shapes');
+    const after = await until(s => s.status.startsWith('Row 13:'), 'Page navigation selected a different key');
+    assert.equal(after.revision, before.revision); assert.deepEqual(after.shapes, before.shapes);
+    assert.equal(after.undoName, before.undoName); assert.equal(after.redoName, before.redoName);
+  });
+  await check('Create Shape from Row creates the filtered exact row and undo restores the whole prior drawing', async () => {
+    await click('Clear data view'); await enter('Data filter', 'Bob'); await click('Filter data rows');
+    await click('Select data row 0002'); const before = await snapshot(); const ids = new Set(before.shapes.map(s => s.id));
+    await action('Create Shape from Row');
+    const after = await until(s => s.nodes === 3 && s.selection === 1 && s.undoName === 'Create linked shape', 'Linked-shape creation did not commit');
+    const created = after.shapes.find(s => !ids.has(s.id)); assert.ok(created?.selected);
+    assert.equal(created.text, '0002'); assert.equal(created.dataRowKey, '0002'); assert.equal(created.data.Progress, '90');
+    assert.equal(created.data.Owner, 'Bob'); assert.equal(created.dataSource, 'Assets');
+    assert.deepEqual(contentOf(after.shapes.filter(s => ids.has(s.id))), contentOf(before.shapes));
+    await click('Undo');
+    const restored = await until(s => s.nodes === 2, 'Creation undo did not remove the new shape');
+    assert.deepEqual(restored.shapes, before.shapes);
+    await click('Redo'); await until(s => s.shapes.some(n => n.id === created.id && n.dataRowKey === '0002'), 'Creation redo lost identity or binding');
+    const pending = page.waitForEvent('download'); await click('Save');
+    const document = JSON.parse((await fs.readFile(await (await pending).path())).toString('utf8'));
+    const saved = document.pages.flatMap(p => p.shapes).find(s => s.id === created.id);
+    assert.equal(saved.dataBinding.baseline.Id, '0002'); assert.equal(saved.dataBinding.baseline.Progress, '90');
+    await page.screenshot({ path: 'artifacts/screenshots/DrawingSpace-create-linked-shape.png' });
   });
   assert.deepEqual(errors, []); console.log(`Validated ${results.length} manual data scenarios at ${base}`);
 } catch (error) {
