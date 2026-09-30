@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Xml;
 using DrawingSpace.Documents;
 using Xunit;
 
@@ -16,6 +17,13 @@ public sealed class XlsxFormulaCacheTests
     [Fact]
     public void ExplicitlyStringTypedEmptyFormulaResultIsValid()
         => Assert.Equal("", Read("str", "<v/>").Table.Rows[0]["Value"]);
+
+    [Fact]
+    public void ExcessivelyNestedCellXmlIsRejectedBeforeMaterialization()
+    {
+        var nested = string.Concat(Enumerable.Repeat("<nested>", 80)) + "text" + string.Concat(Enumerable.Repeat("</nested>", 80));
+        Assert.Throws<XmlException>(() => Read("str", "<v>" + nested + "</v>"));
+    }
 
     private static XlsxTableResult Read(string type, string cache)
     {

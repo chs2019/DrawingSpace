@@ -26,6 +26,9 @@ jobs:
           dotnet build tools/DrawingSpace.SourceBenchmarks -c Release
       - name: Measure routing, data, text and connector-path time and allocations
         shell: bash
+        env:
+          # Avoid measuring Tier-0/Tier-1 transitions between compared implementations.
+          DOTNET_TieredCompilation: '0'
         run: |
           mkdir -p artifacts/performance
           dotnet run --project tools/DrawingSpace.RoutingBenchmarks -c Release --no-build > artifacts/performance/routing.json

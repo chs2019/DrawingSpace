@@ -54,12 +54,12 @@ internal sealed class XlsxPackage : IDisposable
             }
             if (output.Length != entry.Length) throw new InvalidDataException("Workbook part length differs from its ZIP directory.");
             output.Position = 0;
-            return XmlReader.Create(output, new XmlReaderSettings
+            return new XlsxXmlReader(XmlReader.Create(output, new XmlReaderSettings
             {
                 DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null,
                 MaxCharactersInDocument = limit, MaxCharactersFromEntities = 1024,
                 CloseInput = true, IgnoreComments = true, IgnoreProcessingInstructions = true
-            });
+            }));
         }
         catch { output.Dispose(); throw; }
     }

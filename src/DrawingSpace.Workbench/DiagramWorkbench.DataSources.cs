@@ -34,7 +34,6 @@ public sealed partial class DiagramWorkbench
         var request = ++_sourceLoadVersion;
         var file = await storage.OpenWorkbookAsync();
         if (file is null || request != _sourceLoadVersion) return;
-        // Validate before retiring the previous source. A rejected file cannot replace it.
         var workbook = XlsxDataWorkbook.Open(file.Value.Bytes);
         RetireDataEditors();
         _excelWorkbook = workbook; _excelName = file.Value.Name;
@@ -76,8 +75,10 @@ public sealed partial class DiagramWorkbench
         _properties.Children.Add(OfficeTheme.Row(
             DataButton("Open CSV", OfficeIcon.Open, () => RunAsync(OpenDataFileAsync), _storage is ITabularWorkspaceStorage),
             DataButton("Open Excel", OfficeIcon.Open, () => RunAsync(OpenExcelFileAsync), _storage is IExcelWorkspaceStorage)));
-        if (_excelWorkbook is not null) BuildExcelSourceEditors();
-        DataField("Source identity", _dataSource, value => { _dataSource = value; InvalidateDataPreview(); });
+        TextBox? sourceEditor = null;
+        if (_excelWorkbook is not null)
+            BuildExcelSourceEditors(value => { if (sourceEditor is not null) sourceEditor.Text = value; });
+        sourceEditor = DataField("Source identity", _dataSource, value => { _dataSource = value; InvalidateDataPreview(); });
         DataField("Key column", _dataKey, value => { _dataKey = value; InvalidateDataPreview(); });
         DataField("Match field", _dataMatch, value => { _dataMatch = value; InvalidateDataPreview(); });
         Paragraph("Match by $text, $name, $id, or a shape-data field. Linked shapes refresh by stored key, not row order.");
@@ -121,7 +122,7 @@ public sealed partial class DiagramWorkbench
         }
     }
 
-    private void BuildExcelSourceEditors()
+    private void BuildExcelSourceEditors(Action<string> sourceChanged)
     {
         var workbook = _excelWorkbook!;
         var sheets = workbook.Worksheets.Select(s => s.Name).ToArray();
@@ -137,7 +138,8 @@ public sealed partial class DiagramWorkbench
         {
             if (generation != _dataPaneGeneration || selector.SelectedIndex < 0 || selector.SelectedIndex == previous) return;
             previous = selector.SelectedIndex; _excelSheet = sheets[previous];
-            _dataSource = ExcelSourceIdentity(); _excelDiagnostics = []; InvalidateDataPreview();
+            _dataSource = ExcelSourceIdentity(); sourceChanged(_dataSource);
+            _excelDiagnostics = []; InvalidateDataPreview();
         }
         _dataEditorCommits.Add(Commit);
         selector.SelectionChanged += (_, _) => { if (_pane == "externaldata") Commit(); };

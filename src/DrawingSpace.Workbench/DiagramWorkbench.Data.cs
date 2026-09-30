@@ -37,7 +37,7 @@ public sealed partial class DiagramWorkbench
         _dataPlan = null; _dataTable = null; _dataReport = "";
     }
 
-    private void DataField(string name, string text, Action<string> change)
+    private TextBox DataField(string name, string text, Action<string> change)
     {
         var row = new Grid { ColumnDefinitions = { new() { Width = new GridLength(118) }, new() { Width = new GridLength(1, GridUnitType.Star) } } };
         row.Children.Add(OfficeTheme.Text(name, 11));
@@ -52,6 +52,7 @@ public sealed partial class DiagramWorkbench
         field.TextChanged += (_, _) => { if (_pane == pane) Commit(); };
         field.LostFocus += (_, _) => { if (_pane == pane) Commit(); };
         Grid.SetColumn(field, 1); row.Children.Add(field); _properties.Children.Add(row);
+        return field;
     }
 
     private OfficeButton DataButton(string name, OfficeIcon icon, Action action, bool enabled = true)

@@ -65,9 +65,10 @@ try {
 
   await check('Excel file picker selects a worksheet and explicit header row without editing the drawing', async () => {
     await upload(20); await click('Preview Refresh');
-    const state = await until(s => s.status.startsWith('11 rows; 1 shapes'), 'Excel source preview was not produced');
+    // Status updates before deferred layout completes. Assert the actual realized
+    // grid as well, not a transient snapshot of the previous property pane.
+    const state = await until(s => s.status.startsWith('11 rows; 1 shapes') && cell(s, 1, 'Id', '0001'), 'Excel source preview was not realized');
     assert.equal(asset(state).dataSource, null); assert.equal(Object.keys(asset(state).data).length, 0);
-    assert.ok(cell(state, 1, 'Id', '0001'));
     await page.screenshot({ path: 'artifacts/screenshots/DrawingSpace-excel-source.png' });
   });
   await check('Source filtering displays matching rows without changing the refresh plan', async () => {

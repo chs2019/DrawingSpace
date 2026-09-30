@@ -21,9 +21,10 @@ public sealed partial class SceneRenderer
             return PlainConnectorPath(route.Points);
         if (jumps.Count > 262144) throw new ArgumentException("Connector exceeds the rendered jump budget.", nameof(jumps));
         var ordered = ArrayPool<OrderedJump>.Shared.Rent(jumps.Count);
-        var path = new SKPath();
+        SKPath? path = null;
         try
         {
+            path = new SKPath();
             var count = 0;
             for (var i = 0; i < jumps.Count; i++)
             {
@@ -65,19 +66,23 @@ public sealed partial class SceneRenderer
             }
             return path;
         }
-        catch { path.Dispose(); throw; }
+        catch { path?.Dispose(); throw; }
         finally { ArrayPool<OrderedJump>.Shared.Return(ordered); }
     }
 
     private static SKPath PlainConnectorPath(IReadOnlyList<PointD> points)
     {
         var path = new SKPath();
-        if (points.Count > 0)
+        try
         {
-            Move(path, points[0]);
-            for (var i = 1; i < points.Count; i++) Line(path, points[i]);
+            if (points.Count > 0)
+            {
+                Move(path, points[0]);
+                for (var i = 1; i < points.Count; i++) Line(path, points[i]);
+            }
+            return path;
         }
-        return path;
+        catch { path.Dispose(); throw; }
     }
 
     private static void Move(SKPath path, PointD point) => path.MoveTo((float)point.X, (float)point.Y);
