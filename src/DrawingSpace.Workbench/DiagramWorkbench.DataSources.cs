@@ -112,7 +112,7 @@ public sealed partial class DiagramWorkbench
                 ShowStatus(_dataReport); RebuildProperties();
             })));
         if (_dataReport.Length > 0) Paragraph(_dataReport);
-        if (_dataTable is not null) _properties.Children.Add(new DataPreviewGrid(_dataTable));
+        if (_dataTable is not null) BuildSourceBrowser();
         _properties.Children.Add(DataButton("Unlink Data", OfficeIcon.Data, Session.UnlinkSelectedData));
         foreach (var diagnostic in _excelDiagnostics.Take(4)) Paragraph(diagnostic);
         if (_dataPlan is { } preview)
