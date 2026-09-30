@@ -4,7 +4,7 @@ namespace DrawingSpace.Workbench;
 
 public sealed partial class DiagramWorkbench
 {
-    private void RebuildProperties()
+    private void BuildPropertiesCore()
     {
         RetireDataEditors();
         _properties.Children.Clear(); _properties.Spacing = 10;

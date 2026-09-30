@@ -24,19 +24,21 @@ async function until(predicate, message, timeout = 15000) {
 }
 const visible = e => e.enabled && e.width > 0 && e.height > 0 && e.x >= 0 && e.y >= 0
   && e.x + e.width / 2 < 1440 && e.y + e.height / 2 < 1000;
-async function click(name) {
+async function click(name, scope = () => true) {
   // A name can appear before deferred Uno layout has settled. Require repeated,
   // equal control geometry, then send ordinary pointer input exactly once.
-  let previous, stable = 0;
+  let previous, lastObservation, stable = 0;
   const state = await until(s => {
-    const matches = s.elements.filter(e => e.name === name && visible(e));
+    if (s.observation === lastObservation) return false;
+    lastObservation = s.observation;
+    const matches = s.elements.filter(e => e.name === name && visible(e) && scope(e));
     if (matches.length !== 1) { previous = undefined; stable = 0; return false; }
     const e = matches[0];
     const key = JSON.stringify([e.x, e.y, e.width, e.height]);
     stable = key === previous ? stable + 1 : 0; previous = key;
     return stable >= 2;
   }, `Missing or unsettled command: ${name}`);
-  const element = state.elements.find(e => e.name === name && visible(e));
+  const element = state.elements.find(e => e.name === name && visible(e) && scope(e));
   await page.mouse.click(element.x + element.width / 2, element.y + element.height / 2);
   await page.waitForTimeout(200);
 }
@@ -207,7 +209,7 @@ try {
   await check('VSDX export and binary file-picker import round-trip the live drawing', async () => {
     await click('File'); const downloadPromise = page.waitForEvent('download'); await click('VSDX'); const download = await downloadPromise;
     const bytes = await fs.readFile(await download.path()); assert.equal(bytes[0],0x50); assert.equal(bytes[1],0x4b);
-    const saved = page.waitForEvent('download'); await click('Save'); await saved; await until(s => !s.dirty, 'Save did not mark the current revision');
+    const saved = page.waitForEvent('download'); await click('Save', e => e.automationId === 'QuickAccess.Save'); await saved; await until(s => !s.dirty, 'Save did not mark the current revision');
     const count = (await snapshot()).nodes; const chooserPromise = page.waitForEvent('filechooser'); await click('Open'); const chooser = await chooserPromise;
     await chooser.setFiles({name:'roundtrip.vsdx',mimeType:'application/vnd.ms-visio.drawing',buffer:bytes});
     await until(s => s.nodes === count && s.status.startsWith('Opened roundtrip.vsdx'), 'Binary Visio file did not open');

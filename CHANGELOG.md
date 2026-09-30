@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased — workbench responsiveness and recovery
+
+- Retain unchanged page tabs, and invalidate property panes only when their
+  document identity, revision, page, pane type or exact selection changes.
+- Scope command-state registrations to the active ribbon and property pane;
+  rebuilding either releases references to its retired controls and callbacks.
+- Avoid selected-shape array allocation for command eligibility and skip
+  unchanged enabled-state assignments.
+- Display recovery progress and failures separately from foreground command
+  results. Serialize explicit/debounced recovery writes, reject stale queued
+  snapshots, and defer saving uncommitted gestures.
+- Uniquely identify Quick Access Save even while the File ribbon is visible;
+  retain the three-consecutive-export SVG regression checks.
+- Strengthen Excel no-op checks with document revision, shape data and undo/redo
+  assertions. Add eight headless presentation-state tests and seven real-input
+  workbench scenarios to the build and public-site suites.
+- See [workbench performance and recovery](docs/workbench-performance.md) for
+  contracts, reproducible validation and remaining boundaries.
+
+
 ## 0.2.0-alpha.1
 
 - Fixed print-layer filtering in line-jump analysis, so non-printing reference lines cannot leave phantom jumps in PNG/PDF exports.

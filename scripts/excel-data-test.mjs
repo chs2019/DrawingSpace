@@ -96,8 +96,14 @@ try {
       && asset(s).dataRowKey === '0001' && asset(s).text === 'Renamed equipment', 'Stable-key Excel refresh failed');
   });
   await check('Repeated Excel preview and refresh are no-op operations', async () => {
+    const before = await snapshot();
     await click('Preview Refresh'); await until(s => s.status.startsWith('11 rows; 0 shapes'), 'Unchanged workbook was not a no-op');
-    await click('Apply Refresh'); await until(s => s.status === 'No data changes required.', 'No-op Excel refresh changed data');
+    await click('Apply Refresh');
+    const after = await until(s => s.status === 'No data changes required.', 'No-op Excel refresh did not report completion');
+    assert.equal(after.revision, before.revision, 'No-op refresh published a document revision');
+    assert.deepEqual(after.shapes, before.shapes, 'No-op refresh changed shape data or geometry');
+    assert.equal(after.undoName, before.undoName); assert.equal(after.redoName, before.redoName);
+    assert.equal(after.canUndo, before.canUndo); assert.equal(after.canRedo, before.canRedo);
   });
   await check('Excel-linked values drive the existing vector data-graphic renderer and SVG export', async () => {
     await click('Data Bars'); await click('Apply Data Graphic');

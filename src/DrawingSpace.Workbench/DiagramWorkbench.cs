@@ -19,7 +19,7 @@ public sealed partial class DiagramWorkbench : UserControl, IDisposable
     private readonly Slider _zoom = new() { Minimum = 10, Maximum = 800, Value = 100, Width = 126, MinHeight = 20, StepFrequency = 5 };
     private readonly DispatcherTimer _autosave = new() { Interval = TimeSpan.FromMilliseconds(800) };
     private readonly List<(OfficeButton Button, Func<bool> Enabled)> _bindings = [];
-    private bool _refreshing, _disposed, _savingRecovery, _pendingRecovery;
+    private bool _refreshing, _disposed;
     private string? _clipboard;
     private string _pane = "";
     private StencilMaster? _dragMaster;
@@ -73,7 +73,7 @@ public sealed partial class DiagramWorkbench : UserControl, IDisposable
         var grid = new Grid { Background = OfficeTheme.Brush(OfficeTheme.Accent), ColumnDefinitions = { new() { Width = GridLength.Auto }, new() { Width = new GridLength(1, GridUnitType.Star) }, new() { Width = GridLength.Auto } } };
         var app = new OfficeIconView { Icon = OfficeIcon.App, Color = "#FFFFFF", Width = 23, Height = 23, Margin = new Thickness(12, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
         var save = new OfficeButton("", OfficeIcon.Save, action: () => RunAsync(SaveAsync)) { Dark = true, Width = 33, Height = 32 };
-        AutomationProperties.SetName(save, "Save"); ToolTipService.SetToolTip(save, "Save (Ctrl+S)");
+        AutomationProperties.SetName(save, "Save"); AutomationProperties.SetAutomationId(save, "QuickAccess.Save"); ToolTipService.SetToolTip(save, "Save (Ctrl+S)");
         var undo = new OfficeButton("", OfficeIcon.Undo, action: () => Session.Undo()) { Dark = true, Width = 33, Height = 32 };
         var redo = new OfficeButton("", OfficeIcon.Redo, action: () => Session.Redo()) { Dark = true, Width = 33, Height = 32 };
         AutomationProperties.SetName(undo, "Undo"); AutomationProperties.SetName(redo, "Redo");
@@ -87,40 +87,19 @@ public sealed partial class DiagramWorkbench : UserControl, IDisposable
     private UIElement BuildStatusBar()
     {
         var grid = new Grid { Background = OfficeTheme.Brush("#F6F6F6"), Padding = new Thickness(10, 0, 6, 0), ColumnDefinitions = { new() { Width = new GridLength(1, GridUnitType.Star) }, new() { Width = GridLength.Auto }, new() { Width = GridLength.Auto } } };
-        grid.Children.Add(_status); _selectionInfo.Margin = new Thickness(12, 0, 20, 0); Grid.SetColumn(_selectionInfo, 1); grid.Children.Add(_selectionInfo);
+        grid.Children.Add(_status);
+        grid.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        _recoveryStatus.Margin = new Thickness(12, 0, 0, 0); Grid.SetColumn(_recoveryStatus, 1); grid.Children.Add(_recoveryStatus);
+        AutomationProperties.SetName(_recoveryStatus, "Recovery status");
+        _selectionInfo.Margin = new Thickness(12, 0, 20, 0); Grid.SetColumn(_selectionInfo, 2); grid.Children.Add(_selectionInfo);
         var zoomOut = new OfficeButton("", OfficeIcon.Minus, action: () => Surface.ZoomAt(Session.Viewport.Zoom / 1.2)) { Width = 25, Height = 23, MinHeight = 20 };
         var zoomIn = new OfficeButton("", OfficeIcon.Add, action: () => Surface.ZoomAt(Session.Viewport.Zoom * 1.2)) { Width = 25, Height = 23, MinHeight = 20 };
         var fit = new OfficeButton("", OfficeIcon.Fit, action: () => Surface.Fit()) { Width = 28, Height = 23, MinHeight = 20 };
         AutomationProperties.SetName(zoomOut, "Zoom out"); AutomationProperties.SetName(zoomIn, "Zoom in"); AutomationProperties.SetName(fit, "Fit page"); AutomationProperties.SetName(_zoom, "Zoom percentage");
         _zoomLabel.Width = 42; _zoomLabel.TextAlignment = TextAlignment.Right;
         _zoom.ValueChanged += (_, _) => { if (!_refreshing) Surface.ZoomAt(_zoom.Value / 100); };
-        var row = OfficeTheme.Row(_zoomLabel, zoomOut, _zoom, zoomIn, fit); row.VerticalAlignment = VerticalAlignment.Center; Grid.SetColumn(row, 2); grid.Children.Add(row);
+        var row = OfficeTheme.Row(_zoomLabel, zoomOut, _zoom, zoomIn, fit); row.VerticalAlignment = VerticalAlignment.Center; Grid.SetColumn(row, 3); grid.Children.Add(row);
         return new Border { Child = grid, BorderBrush = OfficeTheme.Brush("#D5D5D5"), BorderThickness = new Thickness(0, 1, 0, 0) };
-    }
-    private void SessionChanged(ChangeKind kind)
-    {
-        if (kind == ChangeKind.Preview) { Surface.Invalidate(); StateChanged?.Invoke(); return; }
-        if (kind == ChangeKind.Document) { _autosave.Stop(); _autosave.Start(); }
-        Refresh(); StateChanged?.Invoke();
-    }
-    private void Refresh()
-    {
-        if (_refreshing) return;
-        _refreshing = true;
-        try
-        {
-            _title.Text = Session.Document.Title + (Session.IsDirty ? " *" : "") + "  —  DrawingSpace";
-            _pages.Update(Session.Document.Pages, Session.ActivePageId);
-            foreach (var (button, enabled) in _bindings) button.IsEnabled = enabled();
-            _zoom.Value = Session.Viewport.Zoom * 100; _zoomLabel.Text = $"{Session.Viewport.Zoom:P0}";
-            if (Session.SelectedShapes.Count == 1)
-            {
-                var s = Session.SelectedShapes[0]; _selectionInfo.Text = $"{s.Name}   {s.Width / 96:0.00} × {s.Height / 96:0.00} in";
-            }
-            else _selectionInfo.Text = Session.Selection.Count > 0 ? $"{Session.Selection.Count} objects selected" : $"Page {Session.Document.Pages.IndexOf(Session.Page) + 1} of {Session.Document.Pages.Count}";
-            if (_pane.Length > 0) RebuildProperties();
-        }
-        finally { _refreshing = false; }
     }
     public void ShowStatus(string text, bool error = false)
     {
@@ -136,21 +115,6 @@ public sealed partial class DiagramWorkbench : UserControl, IDisposable
         try { await action(); }
         catch (OperationCanceledException) { ShowStatus("Cancelled"); }
         catch (Exception ex) { Console.Error.WriteLine(ex); ShowStatus(ex.Message, true); }
-    }
-    private async Task WriteRecoveryAsync()
-    {
-        if (_savingRecovery) { _pendingRecovery = true; return; }
-        _savingRecovery = true;
-        try
-        {
-            do
-            {
-                _pendingRecovery = false;
-                await _storage.SaveRecoveryAsync(DocumentCodec.Save(Session.Document));
-                ShowStatus("Recovery copy saved locally");
-            } while (_pendingRecovery);
-        }
-        finally { _savingRecovery = false; }
     }
     public void Insert(StencilMaster master)
     {
@@ -192,6 +156,13 @@ public sealed partial class DiagramWorkbench : UserControl, IDisposable
         Surface.FinishTextEdit(true); _pane = _pane == pane ? "" : pane;
         _body.ColumnDefinitions[2].Width = new GridLength(_pane.Length == 0 ? 0 : _pane is "externaldata" or "datagraphics" ? 370 : _pane is "shapesheet" or "masters" or "richtext" or "connections" ? 330 : 285);
         _propertyScroll.Visibility = _pane.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        _paneState.Invalidate();
+        if (_pane.Length == 0)
+        {
+            RetireDataEditors();
+            _propertyBindings.Clear();
+            _properties.Children.Clear();
+        }
         Refresh();
     }
     private void ShowContextMenu(Point point)
@@ -209,6 +180,9 @@ public sealed partial class DiagramWorkbench : UserControl, IDisposable
     }
     public void Dispose()
     {
-        if (_disposed) return; _disposed = true; _autosave.Stop(); Session.Changed -= SessionChanged; Surface.Dispose();
+        if (_disposed) return; _disposed = true; _autosave.Stop(); Session.Changed -= SessionChanged;
+        _pendingRecovery = false; _sourceLoadVersion++;
+        _bindings.Clear(); _ribbonBindings.Clear(); _propertyBindings.Clear(); _paneState.Invalidate();
+        Surface.Dispose();
     }
 }
