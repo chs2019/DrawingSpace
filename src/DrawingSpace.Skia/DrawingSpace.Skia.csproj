@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net10.0</TargetFramework><IsPackable>true</IsPackable><Description>SkiaSharp diagram geometry, rendering, hit testing and SVG/PNG/PDF export.</Description></PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="SkiaSharp" Version="3.119.2" />
+    <PackageReference Include="SkiaSharp" Version="4.152.1" />
     <ProjectReference Include="../DrawingSpace.Routing/DrawingSpace.Routing.csproj" />
     <ProjectReference Include="../DrawingSpace.Text/DrawingSpace.Text.csproj" />
   </ItemGroup>
