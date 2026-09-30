@@ -38,6 +38,24 @@ async function click(name, scope = () => true) {
   await page.mouse.click(target.x + target.width / 2, target.y + target.height / 2);
   await until(s => s.observation > observation, `No observation after clicking ${name}`);
 }
+async function ribbon(name) {
+  await click(name);
+  // A new timer publication is not proof that pointer release has rebuilt and
+  // arranged the requested ribbon. Observe that tab's actual command geometry
+  // and binding count across three different publications before assertions.
+  const marker = { File: 'SVG', Home: 'Pointer Tool', Data: 'Color by Value', View: 'Ruler', Developer: 'ShapeSheet' }[name];
+  assert.ok(marker, `No ribbon marker for ${name}`);
+  let previous, observation, stable = 0;
+  return until(s => {
+    if (s.observation === observation) return false;
+    observation = s.observation;
+    const matches = s.elements.filter(e => e.name === marker && e.width > 0 && e.height > 0 && e.y >= 69 && e.y < s.canvasY);
+    if (matches.length !== 1) { previous = undefined; stable = 0; return false; }
+    const e = matches[0], state = JSON.stringify([e.x, e.y, e.width, e.height, s.commandBindings]);
+    stable = state === previous ? stable + 1 : 1; previous = state;
+    return stable >= 3;
+  }, `Requested ${name} ribbon did not settle`);
+}
 async function enter(name, value) {
   await click(name); await page.keyboard.press('Control+a'); await page.keyboard.type(value); await page.keyboard.press('Enter');
 }
@@ -89,8 +107,8 @@ try {
     assert.equal(after.revision, before.revision);
   });
   await check('Quick Access Save is uniquely targeted with File ribbon open and retains editors', async () => {
-    const before = await snapshot(); await click('File');
-    assert.equal((await snapshot()).elements.filter(e => e.name === 'Save' && e.enabled).length, 2);
+    const before = await snapshot(); const fileRibbon = await ribbon('File');
+    assert.equal(fileRibbon.elements.filter(e => e.name === 'Save' && e.enabled).length, 2);
     const pending = page.waitForEvent('download');
     await click('Save', e => e.automationId === 'QuickAccess.Save'); await pending;
     const after = await until(s => !s.dirty, 'Save did not mark the current document');
@@ -102,7 +120,7 @@ try {
     const tabs = ['Home', 'Data', 'View', 'Developer', 'File'];
     for (let cycle = 0; cycle < 6; cycle++) {
       for (const tab of tabs) {
-        await click(tab); const s = await snapshot();
+        const s = await ribbon(tab);
         if (cycle === 0) counts[tab] = s.commandBindings;
         else assert.equal(s.commandBindings, counts[tab], `Retired ${tab} bindings are still registered`);
       }
@@ -113,9 +131,9 @@ try {
     await fs.writeFile('artifacts/workbench-binding-results.json', JSON.stringify(counts, null, 2));
   });
   await check('Recovery saves preserve foreground validation messages', async () => {
-    await click('Home'); await enter('Width', 'not-a-number');
+    await ribbon('Home'); await enter('Width', 'not-a-number');
     const before = await until(s => s.status.startsWith('Width must be between'), 'Invalid dimension was not reported');
-    await click('File'); await click('Save recovery copy');
+    await ribbon('File'); await click('Save recovery copy');
     const after = await until(s => s.recoveryWrites > before.recoveryWrites && s.recoveryCurrent, 'Explicit recovery save did not complete');
     assert.equal(after.status, before.status);
     assert.equal(after.recoveryStatus, 'Recovery saved');
@@ -129,7 +147,7 @@ try {
     await click('Undo'); await until(s => s.pages === before.pages && s.activePageId === before.activePageId && s.nodes === 2, 'Page undo did not restore active content');
   });
   await check('Recovery defers live gestures and persists only the cancelled gesture baseline', async () => {
-    await click('Home'); await click('Close task pane'); await select(secondId);
+    await ribbon('Home'); await click('Close task pane'); await select(secondId);
     await until(s => s.recoveryCurrent, 'Fixture recovery did not settle');
     const before = await snapshot();
     await page.keyboard.press('ArrowRight');

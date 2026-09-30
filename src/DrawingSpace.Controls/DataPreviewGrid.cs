@@ -6,85 +6,169 @@ using Windows.System;
 
 namespace DrawingSpace.Controls;
 
-/// <summary>Bounded source view: five rows and three columns are realized at a time. Sorting/filtering never changes the source or refresh scope.</summary>
+/// <summary>Bounded, selectable source view. Selection is a source key, never a view ordinal.</summary>
 public sealed class DataPreviewGrid : UserControl
 {
-    private readonly CsvDataTable _source;
+    private readonly TabularDataCursor _cursor;
+    private readonly DataRowLinkIndex? _links;
     private readonly TextBox _filter;
     private readonly StackPanel _body;
-    private TabularDataView _view;
-    private string _appliedFilter = "";
-    private string? _sortColumn;
-    private bool _descending, _numeric;
-    private int _row, _column;
+    private readonly List<RowPresentation> _rows = [];
+    private int _renderGeneration;
+    private sealed record RowPresentation(string Key, OfficeButton Header, List<Border> Cells, string Background);
+    public string? SelectedKey => _cursor.SelectedKey;
+    public event Action<string>? RowSelected;
 
-    public DataPreviewGrid(CsvDataTable source)
+    public DataPreviewGrid(CsvDataTable source) : this(new TabularDataCursor(source)) { }
+
+    public DataPreviewGrid(TabularDataCursor cursor, DataRowLinkIndex? links = null)
     {
-        _source = source ?? throw new ArgumentNullException(nameof(source));
-        _view = TabularDataView.Create(source);
+        _cursor = cursor ?? throw new ArgumentNullException(nameof(cursor));
+        if (links is not null && (links.SourceId != cursor.Source.SourceId || links.KeyColumn != cursor.Source.KeyColumn))
+            throw new ArgumentException("Link index belongs to another source.", nameof(links));
+        _links = links;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         var panel = OfficeTheme.Column(); panel.Spacing = 4;
         var search = new Grid { ColumnDefinitions = { new() { Width = new GridLength(1, GridUnitType.Star) }, new() { Width = GridLength.Auto } } };
-        _filter = OfficeTheme.Field("", "Data filter"); _filter.PlaceholderText = "Filter source rows"; _filter.MaxLength = 256;
+        _filter = OfficeTheme.Field(cursor.FilterText, "Data filter"); _filter.PlaceholderText = "Filter source rows"; _filter.MaxLength = 256;
         _filter.KeyDown += (_, e) => { if (e.Key == VirtualKey.Enter) { ApplyFilter(); e.Handled = true; } };
         search.Children.Add(_filter);
         var apply = new OfficeButton("Filter", OfficeIcon.Search, action: ApplyFilter) { Height = 28 };
         AutomationProperties.SetName(apply, "Filter data rows"); Grid.SetColumn(apply, 1); search.Children.Add(apply);
         panel.Children.Add(search);
         var options = OfficeTheme.Row();
-        var numeric = new CheckBox { Content = "Numeric sort", FontSize = 11, MinHeight = 24 };
+        var numeric = new CheckBox { Content = "Numeric sort", FontSize = 11, MinHeight = 24, IsChecked = cursor.Numeric };
         AutomationProperties.SetName(numeric, "Numeric data sort");
-        numeric.Checked += (_, _) => { _numeric = true; Requery(); };
-        numeric.Unchecked += (_, _) => { _numeric = false; Requery(); };
+        numeric.Checked += (_, _) => Query(numeric: true);
+        numeric.Unchecked += (_, _) => Query(numeric: false);
         options.Children.Add(numeric);
         var clear = new OfficeButton("Clear", OfficeIcon.None, action: () =>
-        { _filter.Text = ""; _appliedFilter = ""; _sortColumn = null; _descending = false; Requery(); }) { Height = 25 };
+        { _filter.Text = ""; _cursor.Query("", numeric: _cursor.Numeric); Render(); }) { Height = 25 };
         AutomationProperties.SetName(clear, "Clear data view"); options.Children.Add(clear); panel.Children.Add(options);
         _body = OfficeTheme.Column(); _body.Spacing = 4; panel.Children.Add(_body); Content = panel;
         Render();
     }
 
-    private void ApplyFilter() { _appliedFilter = _filter.Text; Requery(); }
-    private void Requery()
+    /// <summary>Show a linked row, explicitly clearing a hiding filter. No document or refresh mutation.</summary>
+    public void RevealRow(string key)
     {
-        _view = TabularDataView.Create(_source, _appliedFilter, _sortColumn, _descending, _numeric);
-        _row = 0; Render();
+        _cursor.RevealKey(key); _filter.Text = _cursor.FilterText; Render(); RowSelected?.Invoke(key);
+    }
+
+    private void ApplyFilter() { _cursor.Query(_filter.Text, _cursor.SortColumn, _cursor.Descending, _cursor.Numeric); Render(); }
+    private void Query(bool numeric) { _cursor.Query(_cursor.FilterText, _cursor.SortColumn, _cursor.Descending, numeric); Render(); }
+    private void SelectRow(string key)
+    {
+        var changed = _cursor.SelectedKey != key;
+        _cursor.SelectKey(key);
+        // Keep controls and keyboard focus alive when only selection changes.
+        UpdateSelection(); FocusSelectedRow(FocusState.Pointer);
+        if (changed) RowSelected?.Invoke(key);
+    }
+
+    private void MoveSelectedRow(VirtualKey key)
+    {
+        var count = _cursor.View.RowOrdinals.Count;
+        if (count == 0) return;
+        var first = _cursor.FirstRow;
+        // The cursor caches the selected view position. Repeated navigation is O(1)
+        // and never clears a filter, sorts again or scans the complete source table.
+        var changed = key switch
+        {
+            VirtualKey.Home => _cursor.SelectVisibleRow(0),
+            VirtualKey.End => _cursor.SelectVisibleRow(count - 1),
+            VirtualKey.PageUp => _cursor.MoveSelection(-TabularDataCursor.PageRows),
+            VirtualKey.PageDown => _cursor.MoveSelection(TabularDataCursor.PageRows),
+            VirtualKey.Up => _cursor.MoveSelection(-1),
+            _ => _cursor.MoveSelection(1)
+        };
+        if (first != _cursor.FirstRow) Render(); else UpdateSelection();
+        FocusSelectedRow(FocusState.Keyboard);
+        if (changed) RowSelected?.Invoke(_cursor.SelectedKey!);
+    }
+
+    private void UpdateSelection()
+    {
+        foreach (var row in _rows)
+        {
+            var selected = row.Key == _cursor.SelectedKey;
+            if (row.Header.IsSelected == selected) continue;
+            row.Header.IsSelected = selected;
+            foreach (var cell in row.Cells) cell.Background = OfficeTheme.Brush(selected ? "#DEEBF7" : row.Background);
+        }
+    }
+
+    private void FocusSelectedRow(FocusState focus)
+    {
+        var target = _rows.FirstOrDefault(row => row.Key == _cursor.SelectedKey)?.Header;
+        if (target is null || target.Focus(focus)) return;
+        var generation = _renderGeneration;
+        void Loaded(object sender, RoutedEventArgs e)
+        {
+            target.Loaded -= Loaded;
+            if (generation == _renderGeneration) target.Focus(focus);
+        }
+        target.Loaded += Loaded;
     }
 
     private void Render()
     {
-        _body.Children.Clear();
+        _renderGeneration++; _rows.Clear(); _body.Children.Clear();
+        var source = _cursor.Source; var view = _cursor.View;
+        var firstRow = _cursor.FirstRow; var firstColumn = _cursor.FirstColumn;
+        var columns = Math.Min(TabularDataCursor.PageColumns, source.Columns.Count - firstColumn);
+        var rows = Math.Min(TabularDataCursor.PageRows, view.RowOrdinals.Count - firstRow);
         var grid = new Grid();
-        var columns = Math.Min(3, _source.Columns.Count - _column);
-        var rows = Math.Min(5, _view.RowOrdinals.Count - _row);
+        grid.ColumnDefinitions.Add(new() { Width = new GridLength(38) });
         for (var i = 0; i < columns; i++) grid.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         for (var i = 0; i <= rows; i++) grid.RowDefinitions.Add(new() { Height = new GridLength(25) });
+        var linkHeader = OfficeTheme.Text("Link", 10); Grid.SetRow(linkHeader, 0); grid.Children.Add(linkHeader);
+        for (var r = 0; r < rows; r++)
+        {
+            var key = view[firstRow + r][source.KeyColumn];
+            var count = _links?.ShapesFor(key).Count ?? 0;
+            var button = new OfficeButton(count == 0 ? (firstRow + r + 1).ToString() : count.ToString(),
+                count == 0 ? OfficeIcon.None : OfficeIcon.Data, action: () => SelectRow(key))
+                { Height = 25, IsSelected = key == _cursor.SelectedKey, HorizontalAlignment = HorizontalAlignment.Stretch };
+            AutomationProperties.SetName(button, "Select data row " + key);
+            ToolTipService.SetToolTip(button, $"{key}: {count} linked shapes on this page");
+            button.KeyDown += (_, e) =>
+            {
+                if (e.Key is VirtualKey.Up or VirtualKey.Down or VirtualKey.PageUp or VirtualKey.PageDown or VirtualKey.Home or VirtualKey.End)
+                { MoveSelectedRow(e.Key); e.Handled = true; }
+            };
+            _rows.Add(new(key, button, [], r % 2 == 1 ? "#F8FAFC" : "#FFFFFF"));
+            Grid.SetRow(button, r + 1); grid.Children.Add(button);
+        }
         void Cell(int row, int column, string value)
         {
             var length = Math.Min(120, value.Length);
             if (length < value.Length && length > 0 && char.IsHighSurrogate(value[length - 1]) && char.IsLowSurrogate(value[length])) length--;
             var display = length < value.Length ? value[..length] + "…" : value;
             var text = OfficeTheme.Text(display, 11); text.TextTrimming = TextTrimming.CharacterEllipsis; text.Margin = new Thickness(5, 1, 3, 1);
-            AutomationProperties.SetName(text, $"Data cell {row} {_source.Columns[_column + column]}: {display}");
+            AutomationProperties.SetName(text, $"Data cell {row} {source.Columns[firstColumn + column]}: {display}");
+            var presentation = _rows[row - 1]; var key = presentation.Key;
             var border = new Border
             {
                 Child = text, BorderBrush = OfficeTheme.Brush("#D6DFEA"), BorderThickness = new Thickness(0, 0, 1, 1),
-                Background = OfficeTheme.Brush(row % 2 == 0 ? "#F8FAFC" : "#FFFFFF")
+                Background = OfficeTheme.Brush(key == _cursor.SelectedKey ? "#DEEBF7" : presentation.Background)
             };
-            Grid.SetRow(border, row); Grid.SetColumn(border, column); grid.Children.Add(border);
+            presentation.Cells.Add(border);
+            border.Tapped += (_, e) => { SelectRow(key); e.Handled = true; };
+            Grid.SetRow(border, row); Grid.SetColumn(border, column + 1); grid.Children.Add(border);
         }
         for (var c = 0; c < columns; c++)
         {
-            var key = _source.Columns[_column + c];
-            var header = new OfficeButton(key + (_sortColumn == key ? _descending ? " ▼" : " ▲" : ""), OfficeIcon.None,
-                action: () => { _descending = _sortColumn == key && !_descending; _sortColumn = key; Requery(); })
+            var key = source.Columns[firstColumn + c];
+            var header = new OfficeButton(key + (_cursor.SortColumn == key ? _cursor.Descending ? " ▼" : " ▲" : ""), OfficeIcon.None,
+                action: () => { _cursor.Query(_cursor.FilterText, key, _cursor.SortColumn == key && !_cursor.Descending, _cursor.Numeric); Render(); })
                 { Height = 25, HorizontalAlignment = HorizontalAlignment.Stretch };
             AutomationProperties.SetName(header, "Sort data column " + key);
-            Grid.SetRow(header, 0); Grid.SetColumn(header, c); grid.Children.Add(header);
-            for (var r = 0; r < rows; r++) Cell(r + 1, c, _view[_row + r][key]);
+            Grid.SetColumn(header, c + 1); grid.Children.Add(header);
+            for (var r = 0; r < rows; r++) Cell(r + 1, c, view[firstRow + r][key]);
         }
         _body.Children.Add(grid);
-        var label = OfficeTheme.Text($"Rows {(rows == 0 ? 0 : _row + 1)}–{_row + rows} / {_view.RowOrdinals.Count}  ·  Columns {_column + 1}–{_column + columns} / {_source.Columns.Count}", 10);
+        var label = OfficeTheme.Text($"Rows {(rows == 0 ? 0 : firstRow + 1)}–{firstRow + rows} / {view.RowOrdinals.Count}  ·  Columns {firstColumn + 1}–{firstColumn + columns} / {source.Columns.Count}", 10);
         AutomationProperties.SetName(label, "Data preview range"); _body.Children.Add(label);
         OfficeButton Button(string name, string text, bool enabled, Action action)
         {
@@ -92,10 +176,10 @@ public sealed class DataPreviewGrid : UserControl
             AutomationProperties.SetName(button, name); return button;
         }
         _body.Children.Add(OfficeTheme.Row(
-            Button("Previous data rows", "Rows ‹", _row > 0, () => _row = Math.Max(0, _row - 5)),
-            Button("Next data rows", "Rows ›", _row + rows < _view.RowOrdinals.Count, () => _row += 5),
-            Button("Previous data columns", "Cols ‹", _column > 0, () => _column = Math.Max(0, _column - 3)),
-            Button("Next data columns", "Cols ›", _column + columns < _source.Columns.Count, () => _column += 3)));
+            Button("Previous data rows", "Rows ‹", firstRow > 0, () => _cursor.MoveRows(-1)),
+            Button("Next data rows", "Rows ›", firstRow + rows < view.RowOrdinals.Count, () => _cursor.MoveRows(1)),
+            Button("Previous data columns", "Cols ‹", firstColumn > 0, () => _cursor.MoveColumns(-1)),
+            Button("Next data columns", "Cols ›", firstColumn + columns < source.Columns.Count, () => _cursor.MoveColumns(1))));
         var scope = OfficeTheme.Text("View only: refresh still uses every source row.", 10);
         scope.TextWrapping = TextWrapping.Wrap; _body.Children.Add(scope);
     }

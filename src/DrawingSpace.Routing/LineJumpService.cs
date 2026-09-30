@@ -6,28 +6,25 @@ namespace DrawingSpace.Routing;
 public readonly record struct LineJump(int Segment, PointD Point, double Radius);
 public sealed record LineJumpResult(IReadOnlyDictionary<string, IReadOnlyList<LineJump>> Jumps, bool BudgetExceeded)
 {
-    /// <summary>Exact segment intersection tests, after spatial and drawing-order filtering.</summary>
     public int Comparisons { get; init; }
     public int IndexedSegments { get; init; }
-    /// <summary>Spatial queries issued after excluding owners with no earlier segments.</summary>
     public int SpatialQueries { get; init; }
-    /// <summary>Earlier-owner candidates returned by the spatial index, including candidates not tested after a budget exit.</summary>
     public long Candidates { get; init; }
+    /// <summary>False when no later jumping owner can cross earlier route segments.</summary>
+    public bool SpatialIndexBuilt { get; init; }
 }
 
 /// <summary>
-/// Deterministic crossing ownership in drawing order. A bulk-built spatial index rejects
-/// distant and later/self segments before candidate sorting and intersection testing.
-/// Shared endpoints and collinear overlaps never get bridges. The input routes must
-/// remain unchanged during a call. Segment storage and exact comparisons are bounded.
+/// Deterministic crossing ownership in drawing order. Spatial filtering excludes distant,
+/// self and later segments. Shared endpoints and collinear overlaps never get bridges.
+/// Segment storage and exact comparisons are bounded. Input routes must remain unchanged.
 /// </summary>
 public static class LineJumpService
 {
     public static LineJumpResult Analyze(IReadOnlyList<Connector> edges, IReadOnlyDictionary<string, RouteResult> routes,
         int maximumComparisons = 200000, int maximumSegments = 262144)
     {
-        ArgumentNullException.ThrowIfNull(edges);
-        ArgumentNullException.ThrowIfNull(routes);
+        ArgumentNullException.ThrowIfNull(edges); ArgumentNullException.ThrowIfNull(routes);
         if (maximumComparisons < 1) throw new ArgumentOutOfRangeException(nameof(maximumComparisons));
         if (maximumSegments is < 1 or > 1000000) throw new ArgumentOutOfRangeException(nameof(maximumSegments));
         var result = new Dictionary<string, IReadOnlyList<LineJump>>(edges.Count, StringComparer.Ordinal);
@@ -37,17 +34,15 @@ public static class LineJumpService
             if (!result.TryAdd(edge.Id, Array.Empty<LineJump>()))
                 throw new ArgumentException("Connector identities must be unique.", nameof(edges));
         }
-        var comparisons = 0;
-        var spatialQueries = 0;
-        var candidateCount = 0L;
+        var comparisons = 0; var spatialQueries = 0; var candidateCount = 0L; var indexBuilt = false;
         var segments = new List<IndexedSegment>();
         LineJumpResult Finish(bool exceeded) => new(result, exceeded)
         {
             Comparisons = comparisons, IndexedSegments = segments.Count,
-            SpatialQueries = spatialQueries, Candidates = candidateCount
+            SpatialQueries = spatialQueries, Candidates = candidateCount, SpatialIndexBuilt = indexBuilt
         };
         if (!edges.Any(e => e.LineJumps != LineJumpStyle.None && e.JumpSize >= .5)) return Finish(false);
-        var ownerStarts = new int[edges.Count];
+        var ownerStarts = new int[edges.Count]; var requiresIndex = false;
         for (var owner = 0; owner < edges.Count; owner++)
         {
             ownerStarts[owner] = segments.Count;
@@ -62,30 +57,26 @@ public static class LineJumpService
                 var bounds = new RectD(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Abs(b.X - a.X), Math.Abs(b.Y - a.Y));
                 if (!bounds.IsFinite) throw new ArgumentException("Route bounds exceed the finite coordinate range.", nameof(routes));
                 segments.Add(new(owner, segment, a, b, bounds));
+                if (ownerStarts[owner] > 0 && edges[owner].LineJumps != LineJumpStyle.None
+                    && !(edges[owner].JumpSize < .5) && a.Distance(b) >= 2) requiresIndex = true;
             }
         }
-        var spatial = new SpatialBoundsIndex(segments.Select(s => s.Bounds));
+        // A single effective route, or only non-jumping later owners, cannot own bridges.
+        // Validate and charge segment budgets above before skipping BVH allocation/sorting.
+        if (!requiresIndex) return Finish(false);
+        var spatial = new SpatialBoundsIndex(segments.Select(s => s.Bounds)); indexBuilt = true;
         var candidates = new List<int>();
-        List<LineJump>? jumps = null;
-        var activeOwner = -1;
+        List<LineJump>? jumps = null; var activeOwner = -1;
         foreach (var current in segments)
         {
             var edge = edges[current.Owner];
             if (edge.LineJumps == LineJumpStyle.None || edge.JumpSize < .5 || ownerStarts[current.Owner] == 0) continue;
             if (activeOwner != current.Owner)
-            {
-                activeOwner = current.Owner;
-                jumps = new List<LineJump>();
-                result[edge.Id] = jumps;
-            }
+            { activeOwner = current.Owner; jumps = new List<LineJump>(); result[edge.Id] = jumps; }
             var length = current.A.Distance(current.B);
             if (length < 2) continue;
-            candidates.Clear();
-            spatialQueries++;
-            spatial.Query(current.Bounds, candidates, ownerStarts[current.Owner]);
-            candidateCount += candidates.Count;
-            // Spatial traversal is not painter order. Original ordinals retain the
-            // exhaustive algorithm's first-crossing-wins overlap suppression rule.
+            candidates.Clear(); spatialQueries++;
+            spatial.Query(current.Bounds, candidates, ownerStarts[current.Owner]); candidateCount += candidates.Count;
             candidates.Sort();
             var segmentJumpStart = jumps!.Count;
             foreach (var ordinal in candidates)
@@ -106,7 +97,6 @@ public static class LineJumpService
     }
 
     private readonly record struct IndexedSegment(int Owner, int Segment, PointD A, PointD B, RectD Bounds);
-
     private static bool Intersect(PointD a, PointD b, PointD c, PointD d, out PointD point)
     {
         point = default; var u = b - a; var v = d - c; var denominator = u.X * v.Y - u.Y * v.X;
