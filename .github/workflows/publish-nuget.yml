@@ -25,7 +25,7 @@ jobs:
           [[ "$RUN" =~ ^[0-9]+$ ]]
           gh api "repos/$REPOSITORY/actions/runs/$RUN" --jq '{conclusion, head_branch, event, path}' > /tmp/build.json
           jq -e '.conclusion == "success" and .head_branch == "main" and .event != "pull_request" and .path == ".github/workflows/build.yml"' /tmp/build.json
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: DrawingSpace-packages
           run-id: ${{ inputs.build_run_id }}

@@ -5,11 +5,10 @@
   "type": "module",
   "scripts": {
     "test:browser": "node scripts/run-browser-tests.mjs",
-    "test:browser:masters": "node scripts/master-authoring-test.mjs",
     "test:browser:advanced": "node scripts/advanced-editing-test.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "1.55.1"
+    "@playwright/test": "1.63.0"
   },
   "engines": {
     "node": ">=22"
