@@ -23,17 +23,20 @@ jobs:
           dotnet build tools/DrawingSpace.RoutingBenchmarks -c Release
           dotnet build tools/DrawingSpace.CrossingBenchmarks -c Release
           dotnet build tools/DrawingSpace.DataBenchmarks -c Release
-      - name: Measure route-batch and crossing time and allocations
+          dotnet build tools/DrawingSpace.SourceBenchmarks -c Release
+      - name: Measure routing, data, text and connector-path time and allocations
         shell: bash
         run: |
           mkdir -p artifacts/performance
           dotnet run --project tools/DrawingSpace.RoutingBenchmarks -c Release --no-build > artifacts/performance/routing.json
           dotnet run --project tools/DrawingSpace.CrossingBenchmarks -c Release --no-build > artifacts/performance/crossings.json
           dotnet run --project tools/DrawingSpace.DataBenchmarks -c Release --no-build > artifacts/performance/data-text.json
+          dotnet run --project tools/DrawingSpace.SourceBenchmarks -c Release --no-build > artifacts/performance/source-paths.json
           git rev-parse HEAD > artifacts/performance/commit.txt
           cat artifacts/performance/routing.json
           cat artifacts/performance/crossings.json
           cat artifacts/performance/data-text.json
+          cat artifacts/performance/source-paths.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -62,7 +62,11 @@ public sealed partial class XlsxDataWorkbook
                         var valueNode = cell.Element(cellNs + "v");
                         if (formula is not null)
                         {
-                            if (valueNode is null) throw new InvalidDataException("Formula cell has no cached value. Recalculate and save in Excel first.");
+                            // Spreadsheet writers commonly emit <v/> for an unevaluated
+                            // numeric formula. Only an explicitly string-typed cache can
+                            // legitimately represent the empty string.
+                            if (valueNode is null || valueNode.Value.Length == 0 && (string?)cell.Attribute("t") != "str")
+                                throw new InvalidDataException("Formula cell has no usable cached value. Recalculate and save in Excel first.");
                             if (!formulaNotice) { diagnostics.Add("Formula cells use saved cached results; formulas are not executed or refreshed."); formulaNotice = true; }
                         }
                         var value = ReadCell(cell, cellNs, () => shared ??= ReadSharedStrings(package));
@@ -153,7 +157,7 @@ public sealed partial class XlsxDataWorkbook
         foreach (var child in item.Elements())
         {
             var value = child.Name == ns + "t" ? child.Value : child.Name == ns + "r" ? child.Element(ns + "t")?.Value : null;
-            if (value is null) continue; // Phonetic annotations are not part of the value.
+            if (value is null) continue;
             if (output.Length + value.Length > CsvDataTable.MaximumCellCharacters) throw new InvalidDataException("Shared/inline text exceeds its cell budget.");
             output.Append(value);
         }
