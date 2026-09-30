@@ -3,8 +3,8 @@ using System.Text;
 
 namespace DrawingSpace.Documents;
 
-/// <summary>Immutable CSV snapshot. Identifiers remain strings and keys use ordinal comparison.</summary>
-public sealed class CsvDataTable
+/// <summary>Immutable tabular snapshot. Identifiers remain strings and keys use ordinal comparison.</summary>
+public sealed partial class CsvDataTable
 {
     public const int MaximumCharacters = 4 * 1024 * 1024;
     public const int MaximumRows = 10000;
