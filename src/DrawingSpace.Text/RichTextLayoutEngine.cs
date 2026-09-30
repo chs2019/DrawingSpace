@@ -70,13 +70,15 @@ public sealed partial class RichTextLayoutEngine : IDisposable
             {
                 if (candidate is not null && !ReferenceEquals(candidate, SKTypeface.Empty))
                     candidate.Dispose();
-                candidate = SKTypeface.Default;
+                candidate = PackagedOpenSans.Get(style.FontWeight, style.FontItalic);
             }
             return _owned[key] = candidate;
         }
         public void Dispose()
         {
-            foreach (var face in _owned.Values.Distinct()) if (!ReferenceEquals(face, SKTypeface.Default)) face.Dispose();
+            foreach (var face in _owned.Values.Distinct())
+                if (!PackagedOpenSans.IsShared(face))
+                    face.Dispose();
             _owned.Clear();
         }
     }
