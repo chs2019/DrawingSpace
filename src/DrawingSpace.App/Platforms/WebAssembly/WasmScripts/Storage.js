@@ -61,8 +61,30 @@
           try {
             if (file.size > 32 * 1024 * 1024) throw new Error('The drawing exceeds the 32 MiB file limit.');
             const bytes = new Uint8Array(await file.arrayBuffer());
-            // Chunking avoids argument-stack overflow for multi-megabyte ZIP documents.
             const parts = [];
+            for (let offset = 0; offset < bytes.length; offset += 32768)
+              parts.push(String.fromCharCode(...bytes.subarray(offset, offset + 32768)));
+            finish(JSON.stringify({ name: file.name, base64: btoa(parts.join('')) }));
+          } catch (error) { finish('', error); }
+        }, { once: true });
+        input.click();
+      });
+    },
+    async openWorkbook() {
+      return new Promise((resolve, reject) => {
+        const input = document.createElement('input'); input.type = 'file';
+        input.accept = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'; input.hidden = true;
+        document.body.append(input); let settled = false;
+        const finish = (value, error) => {
+          if (settled) return; settled = true; input.remove();
+          error ? reject(error) : resolve(value);
+        };
+        input.addEventListener('cancel', () => finish(''), { once: true });
+        input.addEventListener('change', async () => {
+          const file = input.files?.[0]; if (!file) return finish('');
+          try {
+            if (file.size > 8 * 1024 * 1024) throw new Error('Workbook exceeds the 8 MiB compressed limit.');
+            const bytes = new Uint8Array(await file.arrayBuffer()); const parts = [];
             for (let offset = 0; offset < bytes.length; offset += 32768)
               parts.push(String.fromCharCode(...bytes.subarray(offset, offset + 32768)));
             finish(JSON.stringify({ name: file.name, base64: btoa(parts.join('')) }));
@@ -104,7 +126,6 @@
     isTestMode() { return new URLSearchParams(location.search).get('test') === '1'; },
     publishDiagnostics(json) { globalThis.drawingSpaceSnapshot = JSON.parse(json); }
   };
-  // Browser defaults must not hijack commands routed to the actual Uno window.
   document.addEventListener('keydown', event => {
     const input = /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName ?? '') || event.target?.isContentEditable;
     if (!input && (event.ctrlKey || event.metaKey) && ['s', 'o', 'n', 'd', 'g', 'f', '1', '2', '3'].includes(event.key.toLowerCase())) event.preventDefault();
