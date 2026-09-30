@@ -495,46 +495,41 @@ namespace DrawingSpace.Text.Internal
                 }
             }
 
-            using (var paint = new SKPaint())
+            float glyphScale = 1;
+            if (Style.FontVariant == FontVariant.SuperScript)
             {
-                float glyphScale = 1;
-                if (Style.FontVariant == FontVariant.SuperScript)
+                glyphScale = 0.65f;
+            }
+            if (Style.FontVariant == FontVariant.SubScript)
+            {
+                glyphScale = 0.65f;
+            }
+
+            using (var font = new SKFont(Typeface, Style.FontSize * glyphScale)
+            {
+                Subpixel = true,
+                Edging = SKFontEdging.Antialias
+            })
+            {
+                Span<float> widths = Glyphs.Length <= 256
+                    ? stackalloc float[Glyphs.Length]
+                    : new float[Glyphs.Length];
+                Span<SKRect> bounds = Glyphs.Length <= 256
+                    ? stackalloc SKRect[Glyphs.Length]
+                    : new SKRect[Glyphs.Length];
+
+                font.GetGlyphWidths(Glyphs.AsSpan(), widths, bounds);
+                for (int i = 0; i < bounds.Length; i++)
                 {
-                    glyphScale = 0.65f;
-                }
-                if (Style.FontVariant == FontVariant.SubScript)
-                {
-                    glyphScale = 0.65f;
-                }
+                    float gx = GlyphPositions[i].X;
 
-                paint.TextEncoding = SKTextEncoding.GlyphId;
-                paint.Typeface = Typeface;
-                paint.TextSize = Style.FontSize * glyphScale;
-                paint.SubpixelText = true;
-                paint.IsAntialias = true;
-                paint.LcdRenderText = false;
+                    var loh = -(gx + bounds[i].Left);
+                    if (loh > leftOverhang)
+                        leftOverhang = loh;
 
-                unsafe
-                {
-                    fixed (ushort* pGlyphs = Glyphs.Underlying)
-                    {
-                        paint.GetGlyphWidths((IntPtr)(pGlyphs + Start), sizeof(ushort) * Glyphs.Length, out var bounds);
-                        if (bounds != null)
-                        {
-                            for (int i = 0; i < bounds.Length; i++)
-                            {
-                                float gx = GlyphPositions[i].X;
-
-                                var loh = -(gx + bounds[i].Left);
-                                if (loh > leftOverhang)
-                                    leftOverhang = loh;
-
-                                var roh = (gx + bounds[i].Right + 1) - right;
-                                if (roh > rightOverhang)
-                                    rightOverhang = roh;
-                            }
-                        }
-                    }
+                    var roh = (gx + bounds[i].Right + 1) - right;
+                    if (roh > rightOverhang)
+                        rightOverhang = roh;
                 }
             }
         }
