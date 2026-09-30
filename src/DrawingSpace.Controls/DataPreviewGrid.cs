@@ -13,6 +13,9 @@ public sealed class DataPreviewGrid : UserControl
     private readonly DataRowLinkIndex? _links;
     private readonly TextBox _filter;
     private readonly StackPanel _body;
+    private readonly List<RowPresentation> _rows = [];
+    private int _renderGeneration;
+    private sealed record RowPresentation(string Key, OfficeButton Header, List<Border> Cells, string Background);
     public string? SelectedKey => _cursor.SelectedKey;
     public event Action<string>? RowSelected;
 
@@ -36,8 +39,8 @@ public sealed class DataPreviewGrid : UserControl
         var options = OfficeTheme.Row();
         var numeric = new CheckBox { Content = "Numeric sort", FontSize = 11, MinHeight = 24, IsChecked = cursor.Numeric };
         AutomationProperties.SetName(numeric, "Numeric data sort");
-        numeric.Checked += (_, _) => { Query(numeric: true); };
-        numeric.Unchecked += (_, _) => { Query(numeric: false); };
+        numeric.Checked += (_, _) => Query(numeric: true);
+        numeric.Unchecked += (_, _) => Query(numeric: false);
         options.Children.Add(numeric);
         var clear = new OfficeButton("Clear", OfficeIcon.None, action: () =>
         { _filter.Text = ""; _cursor.Query("", numeric: _cursor.Numeric); Render(); }) { Height = 25 };
@@ -57,7 +60,10 @@ public sealed class DataPreviewGrid : UserControl
     private void SelectRow(string key)
     {
         var changed = _cursor.SelectedKey != key;
-        _cursor.SelectKey(key); Render();
+        _cursor.SelectKey(key);
+        // Keep the row controls alive when only selection changes: this also keeps
+        // keyboard focus out of the drawing canvas and avoids rebuilding cell text.
+        UpdateSelection(); FocusSelectedRow(FocusState.Pointer);
         if (changed) RowSelected?.Invoke(key);
     }
 
@@ -70,12 +76,40 @@ public sealed class DataPreviewGrid : UserControl
             if (_cursor.View[i][_cursor.Source.KeyColumn] == _cursor.SelectedKey)
             { row = Math.Clamp(i + direction, 0, count - 1); break; }
         var key = _cursor.View[row][_cursor.Source.KeyColumn];
-        _cursor.RevealKey(key); Render(); RowSelected?.Invoke(key);
+        var changed = key != _cursor.SelectedKey; var first = _cursor.FirstRow;
+        _cursor.RevealKey(key);
+        if (first != _cursor.FirstRow) Render(); else UpdateSelection();
+        FocusSelectedRow(FocusState.Keyboard);
+        if (changed) RowSelected?.Invoke(key);
+    }
+
+    private void UpdateSelection()
+    {
+        foreach (var row in _rows)
+        {
+            var selected = row.Key == _cursor.SelectedKey;
+            if (row.Header.IsSelected == selected) continue;
+            row.Header.IsSelected = selected;
+            foreach (var cell in row.Cells) cell.Background = OfficeTheme.Brush(selected ? "#DEEBF7" : row.Background);
+        }
+    }
+
+    private void FocusSelectedRow(FocusState focus)
+    {
+        var target = _rows.FirstOrDefault(row => row.Key == _cursor.SelectedKey)?.Header;
+        if (target is null || target.Focus(focus)) return;
+        var generation = _renderGeneration;
+        void Loaded(object sender, RoutedEventArgs e)
+        {
+            target.Loaded -= Loaded;
+            if (generation == _renderGeneration) target.Focus(focus);
+        }
+        target.Loaded += Loaded;
     }
 
     private void Render()
     {
-        _body.Children.Clear();
+        _renderGeneration++; _rows.Clear(); _body.Children.Clear();
         var source = _cursor.Source; var view = _cursor.View;
         var firstRow = _cursor.FirstRow; var firstColumn = _cursor.FirstColumn;
         var columns = Math.Min(TabularDataCursor.PageColumns, source.Columns.Count - firstColumn);
@@ -99,6 +133,7 @@ public sealed class DataPreviewGrid : UserControl
                 if (e.Key is VirtualKey.Up or VirtualKey.Down)
                 { MoveSelectedRow(e.Key == VirtualKey.Up ? -1 : 1); e.Handled = true; }
             };
+            _rows.Add(new(key, button, [], r % 2 == 1 ? "#F8FAFC" : "#FFFFFF"));
             Grid.SetRow(button, r + 1); grid.Children.Add(button);
         }
         void Cell(int row, int column, string value)
@@ -108,12 +143,13 @@ public sealed class DataPreviewGrid : UserControl
             var display = length < value.Length ? value[..length] + "…" : value;
             var text = OfficeTheme.Text(display, 11); text.TextTrimming = TextTrimming.CharacterEllipsis; text.Margin = new Thickness(5, 1, 3, 1);
             AutomationProperties.SetName(text, $"Data cell {row} {source.Columns[firstColumn + column]}: {display}");
-            var key = view[firstRow + row - 1][source.KeyColumn];
+            var presentation = _rows[row - 1]; var key = presentation.Key;
             var border = new Border
             {
                 Child = text, BorderBrush = OfficeTheme.Brush("#D6DFEA"), BorderThickness = new Thickness(0, 0, 1, 1),
-                Background = OfficeTheme.Brush(key == _cursor.SelectedKey ? "#DEEBF7" : row % 2 == 0 ? "#F8FAFC" : "#FFFFFF")
+                Background = OfficeTheme.Brush(key == _cursor.SelectedKey ? "#DEEBF7" : presentation.Background)
             };
+            presentation.Cells.Add(border);
             border.Tapped += (_, e) => { SelectRow(key); e.Handled = true; };
             Grid.SetRow(border, row); Grid.SetColumn(border, column + 1); grid.Children.Add(border);
         }

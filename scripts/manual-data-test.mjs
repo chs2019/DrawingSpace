@@ -30,7 +30,7 @@ async function click(name) {
     if (state.observation === observation) return false;
     observation = state.observation;
     const matches = state.elements.filter(e => e.name === name && visible(e));
-    if (matches.length !== 1) { stable = 0; return false; }
+    if (matches.length !== 1) { previous = ''; stable = 0; return false; }
     target = matches[0]; const geometry = JSON.stringify([target.x, target.y, target.width, target.height]);
     stable = previous === geometry ? stable + 1 : 1; previous = geometry;
     return stable >= 3;
@@ -123,6 +123,21 @@ try {
     assert.equal(shapes.length, 2);
     for (const shape of shapes) { assert.equal(shape.dataBinding.rowKey, '0001'); assert.equal(shape.dataBinding.baseline.Progress, '10'); }
     await page.screenshot({ path: 'artifacts/screenshots/DrawingSpace-linked-source-navigation.png' });
+  });
+  await check('Arrow navigation retains focus across row pages without changing the drawing', async () => {
+    const before = await snapshot();
+    await click('Clear data view'); await click('Select data row 12');
+    await page.keyboard.press('ArrowDown');
+    await until(s => s.elements.some(e => e.name === 'Data cell 1 Id: 13'), 'ArrowDown did not enter the next row page');
+    await page.keyboard.press('ArrowUp');
+    await until(s => s.elements.some(e => e.name === 'Data cell 1 Id: 0001'), 'ArrowUp lost keyboard focus across pages');
+    await page.keyboard.press('ArrowDown');
+    await until(s => s.elements.some(e => e.name === 'Data cell 1 Id: 13'), 'Second page traversal lost focus');
+    await page.keyboard.press('ArrowDown');
+    await action('Link to Selected Shapes');
+    const after = await until(s => s.status.startsWith('Row 14:'), 'Keyboard selection did not retain the exact source key');
+    assert.equal(after.revision, before.revision); assert.deepEqual(after.shapes, before.shapes);
+    assert.equal(after.undoName, before.undoName); assert.equal(after.redoName, before.redoName);
   });
   assert.deepEqual(errors, []); console.log(`Validated ${results.length} manual data scenarios at ${base}`);
 } catch (error) {
