@@ -46,10 +46,10 @@ jobs:
           SHA=$(jq -r .head_sha /tmp/verified-build.json)
           echo "run_id=$RUN" >> "$GITHUB_OUTPUT"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ steps.build.outputs.sha }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: DrawingSpace-browser
           run-id: ${{ steps.build.outputs.run_id }}
@@ -59,12 +59,13 @@ jobs:
         env:
           EXPECTED_SHA: ${{ steps.build.outputs.sha }}
         run: jq -e --arg sha "$EXPECTED_SHA" '.commit == $sha' site/build-info.json
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
         with:
           enablement: true
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
+          include-hidden-files: true
       - name: Deploy verified browser build
         id: deployment
         uses: actions/deploy-pages@v4
@@ -81,7 +82,7 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund
           npx playwright install --with-deps chromium
           npm run test:browser
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: DrawingSpace-public-site-validation

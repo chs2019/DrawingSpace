@@ -14,12 +14,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
       - run: dotnet test tests/DrawingSpace.Tests -c Release --logger 'trx;LogFileName=engine.trx' --results-directory artifacts/test-results
-      - uses: actions/upload-artifact@v4
+      - name: Verify engine tests actually executed
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse('artifacts/test-results/engine.trx').getroot()
+          counters = next(e.attrib for e in root.iter() if e.tag.rsplit('}', 1)[-1] == 'Counters')
+          total = int(counters['total'])
+          assert total >= 501, f'Expected at least 501 engine tests, found {counters}'
+          assert int(counters['executed']) == total and int(counters['passed']) == total, counters
+          print(f'Confirmed {total} executed and passing engine tests; no skipped or undiscovered suite.')
+          PY
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: DrawingSpace-engine-validation
@@ -28,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
@@ -54,20 +65,39 @@ jobs:
             case "$project" in */DrawingSpace.App/*) continue;; esac
             dotnet pack "$project" -c Release -o artifacts/packages
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: DrawingSpace-browser
           path: artifacts/site
           include-hidden-files: true
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: DrawingSpace-packages
           path: artifacts/packages
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - name: Download packages with strict artifact digest validation
+        uses: actions/download-artifact@v8
+        with:
+          name: DrawingSpace-packages
+          path: artifacts/downloaded-packages
+      - name: Verify complete package round trip
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          original = Path('artifacts/packages')
+          downloaded = Path('artifacts/downloaded-packages')
+          for suffix in ('.nupkg', '.snupkg'):
+              expected = {p.name for p in original.glob('*' + suffix)}
+              actual = {p.name for p in downloaded.glob('*' + suffix)}
+              assert len(expected) == 12 and actual == expected, (suffix, expected, actual)
+              for name in expected:
+                  assert (original / name).read_bytes() == (downloaded / name).read_bytes(), name
+          print('Verified all twelve packages and twelve symbol packages after upload/download.')
+          PY
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: DrawingSpace-browser-validation
@@ -82,7 +112,7 @@ jobs:
       - name: Source archive
         if: always()
         run: git archive --format=zip --output=/tmp/DrawingSpace-source.zip HEAD
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: DrawingSpace-source
