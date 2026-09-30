@@ -40,6 +40,45 @@ async function click(name) {
 }
 async function enter(name, text) { await click(name); await page.keyboard.press('Control+a'); await page.keyboard.type(text); }
 async function action(name) { await click('Source Row Actions'); await click(name); }
+async function selectSingleCanvasShape(id) {
+  // Pressing an already-selected shape preserves the selection for group dragging.
+  // Clear it with a real blank-canvas click before selecting the topmost fixture.
+  let previous = '', observation = -1, stable = 0, target;
+  async function settledPoint(pointFor, description) {
+    previous = ''; observation = -1; stable = 0;
+    await until(state => {
+      if (state.observation === observation || state.gesture !== 'None') return false;
+      observation = state.observation;
+      target = pointFor(state);
+      if (!target) { stable = 0; previous = ''; return false; }
+      const geometry = JSON.stringify([state.activePageId, state.revision,
+        state.canvasX, state.canvasY, state.canvasWidth, state.canvasHeight,
+        state.panX, state.panY, state.zoom, target.x, target.y]);
+      stable = previous === geometry ? stable + 1 : 1; previous = geometry;
+      return stable >= 3;
+    }, description);
+    await page.mouse.click(target.x, target.y);
+  }
+  await settledPoint(state => {
+    const x = 40, y = 40;
+    const worldX = (x - state.panX) / state.zoom;
+    const worldY = (y - state.panY) / state.zoom;
+    if (state.shapes.some(s => worldX >= s.x - 8 && worldX <= s.x + s.width + 8
+      && worldY >= s.y - 8 && worldY <= s.y + s.height + 8)) return null;
+    return { x: state.canvasX + x, y: state.canvasY + y };
+  }, 'Fixture has no settled blank-canvas selection target');
+  await until(s => s.selection === 0 && s.gesture === 'None', 'Blank canvas did not clear selection');
+  await settledPoint(state => {
+    const shape = state.shapes.find(s => s.id === id);
+    if (!shape) return null;
+    const x = state.panX + (shape.x + shape.width / 2) * state.zoom;
+    const y = state.panY + (shape.y + shape.height / 2) * state.zoom;
+    if (x <= 22 || y <= 22 || x >= state.canvasWidth || y >= state.canvasHeight) return null;
+    return { x: state.canvasX + x, y: state.canvasY + y };
+  }, 'Linked shape did not reach a settled visible canvas position');
+  return until(s => s.gesture === 'None' && s.selection === 1
+    && s.shapes.some(shape => shape.id === id && shape.selected), 'Single linked shape selection failed');
+}
 async function check(name, task) {
   const started = Date.now();
   try { await task(); results.push({ name, passed: true, milliseconds: Date.now() - started }); console.log(`PASS ${name}`); }
@@ -96,10 +135,10 @@ try {
     await click('Apply Refresh'); await until(s => linked(s, '0001', '10'), 'Explicit relinking failed');
   });
   await check('Show Linked Row clears a hiding filter and Linked Shapes selects without editing', async () => {
-    let state = await snapshot(); const shape = state.shapes.at(-1);
-    await page.mouse.click(state.canvasX + state.panX + (shape.x + shape.width / 2) * state.zoom,
-      state.canvasY + state.panY + (shape.y + shape.height / 2) * state.zoom);
-    await until(s => s.selection === 1, 'Single linked shape selection failed');
+    let state = await snapshot(); const before = state; const shape = state.shapes.at(-1);
+    const selected = await selectSingleCanvasShape(shape.id);
+    assert.equal(selected.revision, before.revision);
+    assert.deepEqual(selected.shapes.map(({selected, ...s}) => s), before.shapes.map(({selected, ...s}) => s));
     await enter('Data filter', 'Bob'); await click('Filter data rows');
     state = await until(s => s.elements.some(e => e.name === 'Data cell 1 Id: 0002'), 'Hiding filter missing');
     await action('Show Linked Row');
