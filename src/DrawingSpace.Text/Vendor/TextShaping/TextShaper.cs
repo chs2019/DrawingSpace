@@ -512,7 +512,8 @@ namespace DrawingSpace.Text.Internal
                 Edging = SKFontEdging.Antialias
             };
             var widths = new float[glyphs.Length];
-            font.GetGlyphWidths(glyphs.AsSpan(), widths.AsSpan());
+            var bounds = new SKRect[glyphs.Length];
+            font.GetGlyphWidths(glyphs.AsSpan(), widths.AsSpan(), bounds.AsSpan());
 
             float forceFixedPitchWidth = 0;
             if (asFallbackFor != _typeface && asFallbackFor != null)
