@@ -6,6 +6,7 @@ namespace DrawingSpace.Editing;
 public sealed partial class EditorSession
 {
     public const int MaximumDataRowPlacements = 1024;
+    public const int MaximumDataCreationText = 1024 * 1024;
 
     /// <summary>
     /// Create a plain rectangular shape already linked to an exact source row.
@@ -43,6 +44,7 @@ public sealed partial class EditorSession
             throw new InvalidOperationException("Choose an existing visible, unlocked layer for the new shapes.");
 
         var shapes = new Shape[placements.Count];
+        var textUnits = 0L;
         for (var i = 0; i < shapes.Length; i++)
         {
             var placement = placements[i];
@@ -52,6 +54,13 @@ public sealed partial class EditorSession
             if (!placement.Center.IsFinite || Math.Abs(placement.Center.X) > 999928
                 || Math.Abs(placement.Center.Y) > 999968)
                 throw new ArgumentOutOfRangeException(nameof(placements), "A linked-shape center is non-finite or outside the coordinate envelope.");
+            // Repeated rows can satisfy the field-count limit while expanding history JSON.
+            // Charge every appearance, including baseline and label, before a transaction.
+            textUnits += row[labelColumn ?? source.KeyColumn].Length + (long)source.SourceId.Length
+                + source.KeyColumn.Length + placement.RowKey.Length;
+            foreach (var column in source.Columns) textUnits += 2L * (column.Length + row[column].Length);
+            if (textUnits > MaximumDataCreationText)
+                throw new ArgumentOutOfRangeException(nameof(placements), "Linked-shape text exceeds the 1,048,576-code-unit creation budget. Create a smaller batch.");
             var values = new Dictionary<string, string>(source.Columns.Count, StringComparer.Ordinal);
             foreach (var column in source.Columns) values.Add(column, row[column]);
             shapes[i] = new()
