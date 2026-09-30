@@ -5,6 +5,6 @@
   <ItemGroup>
     <ProjectReference Include="../../src/DrawingSpace.Editing/DrawingSpace.Editing.csproj" />
     <ProjectReference Include="../../src/DrawingSpace.Text/DrawingSpace.Text.csproj" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.2" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.152.1" />
   </ItemGroup>
 </Project>
