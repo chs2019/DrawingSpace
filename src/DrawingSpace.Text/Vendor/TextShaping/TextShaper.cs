@@ -74,22 +74,26 @@ namespace DrawingSpace.Text.Internal
                 _font.SetFunctionsOpenType();
             }
 
-            // Get font metrics for this typeface
-            using (var paint = new SKPaint())
+            // Get font metrics for this typeface. SkiaSharp 4 moved all
+            // text/font state and glyph measurement from SKPaint to SKFont.
+            using (var font = new SKFont(typeface, overScale)
             {
-                paint.Typeface = typeface;
-                paint.TextSize = overScale;
-                _fontMetrics = paint.FontMetrics;
+                Subpixel = true,
+                Edging = SKFontEdging.Antialias
+            })
+            {
+                _fontMetrics = font.Metrics;
 
-                // This is a temporary hack until SkiaSharp exposes
-                // a way to check if a font is fixed pitch.  For now
-                // we just measure and `i` and a `w` and see if they're
-                // the same width.
-                float[] widths = paint.GetGlyphWidths("iw", out var rects);
-                _isFixedPitch = widths != null && widths.Length > 1 && widths[0] == widths[1];
+                // This is a temporary hack until the fixed-pitch property is
+                // reliable for every mapped/fallback typeface. Measure 'i'
+                // and 'w' with the same SKFont used for layout.
+                var glyphs = font.GetGlyphs("iw");
+                Span<float> widths = stackalloc float[glyphs.Length];
+                Span<SKRect> bounds = stackalloc SKRect[glyphs.Length];
+                font.GetGlyphWidths(glyphs.AsSpan(), widths, bounds);
+                _isFixedPitch = widths.Length > 1 && widths[0] == widths[1];
                 if (_isFixedPitch)
                     _fixedCharacterWidth = widths[0];
-
             }
         }
 
