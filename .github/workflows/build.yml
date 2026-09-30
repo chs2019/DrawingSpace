@@ -19,7 +19,7 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet test tests/DrawingSpace.Tests -c Release --logger 'trx;LogFileName=engine.trx' --results-directory artifacts/test-results
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: DrawingSpace-engine-validation
@@ -54,20 +54,20 @@ jobs:
             case "$project" in */DrawingSpace.App/*) continue;; esac
             dotnet pack "$project" -c Release -o artifacts/packages
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: DrawingSpace-browser
           path: artifacts/site
           include-hidden-files: true
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: DrawingSpace-packages
           path: artifacts/packages
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: DrawingSpace-browser-validation
@@ -82,7 +82,7 @@ jobs:
       - name: Source archive
         if: always()
         run: git archive --format=zip --output=/tmp/DrawingSpace-source.zip HEAD
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: DrawingSpace-source

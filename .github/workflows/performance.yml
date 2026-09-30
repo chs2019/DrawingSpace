@@ -40,7 +40,7 @@ jobs:
           cat artifacts/performance/crossings.json
           cat artifacts/performance/data-text.json
           cat artifacts/performance/source-paths.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: DrawingSpace-routing-performance
