@@ -34,7 +34,7 @@ async function click(name, scope = () => true) {
     const matches = s.elements.filter(e => e.name === name && visible(e) && scope(e));
     if (matches.length !== 1) { previous = undefined; stable = 0; return false; }
     const e = matches[0];
-    const key = JSON.stringify([s.revision, s.paneRebuilds, e.x, e.y, e.width, e.height]);
+    const key = JSON.stringify([s.revision, s.propertyRebuilds, e.x, e.y, e.width, e.height]);
     stable = key === previous ? stable + 1 : 0; previous = key;
     return stable >= 2;
   }, `Missing, ambiguous or unsettled control: ${name}`);
