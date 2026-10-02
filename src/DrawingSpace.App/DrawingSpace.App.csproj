@@ -19,4 +19,34 @@
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-desktop'">
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.153.1" />
   </ItemGroup>
+
+  <!-- SkiaSharp's Dawn port passes -std=c++20 to emcc at link time. Uno's
+       raw C GL shim is also compiled in that invocation. Wrap the unchanged
+       upstream source as C++ with explicit C linkage, retaining its exact
+       uno_gl_shim library name and every P/Invoke/GL entry point. Do not edit
+       the NuGet cache or permit undefined native symbols. -->
+  <Target Name="DrawingSpacePrepareUnoGlShim"
+          BeforeTargets="_UnoAdjustCompatibility"
+          Condition="'$(TargetFramework)' == 'net10.0-browserwasm' and '$(_SkiaSharpUseEmdawnwebgpu)' == 'true'">
+    <ItemGroup>
+      <_DrawingSpaceUnoCShim Include="@(WasmShellNativeCompile)"
+                             Condition="'%(Filename)%(Extension)' == 'uno_gl_shim.c'" />
+    </ItemGroup>
+    <Error Condition="'@(_DrawingSpaceUnoCShim->Count())' != '1'"
+           Text="Expected exactly one Uno GL C shim. Review the SkiaSharp/Uno native integration after upgrading dependencies." />
+    <PropertyGroup>
+      <_DrawingSpaceUnoCShimPath>@(_DrawingSpaceUnoCShim->'%(FullPath)')</_DrawingSpaceUnoCShimPath>
+      <_DrawingSpaceUnoCShimPath>$([System.String]::Copy('$(_DrawingSpaceUnoCShimPath)').Replace('\','/'))</_DrawingSpaceUnoCShimPath>
+      <_DrawingSpaceUnoCppShim>$(IntermediateOutputPath)native/uno_gl_shim.cpp</_DrawingSpaceUnoCppShim>
+    </PropertyGroup>
+    <MakeDir Directories="$(IntermediateOutputPath)native" />
+    <WriteLinesToFile File="$(_DrawingSpaceUnoCppShim)"
+                      Lines="extern &quot;C&quot; {&#xA;#include &quot;$(_DrawingSpaceUnoCShimPath)&quot;&#xA;}"
+                      Encoding="UTF-8" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <WasmShellNativeCompile Remove="@(_DrawingSpaceUnoCShim)" />
+      <WasmShellNativeCompile Include="$(_DrawingSpaceUnoCppShim)" Visible="false" />
+      <FileWrites Include="$(_DrawingSpaceUnoCppShim)" />
+    </ItemGroup>
+  </Target>
 </Project>
