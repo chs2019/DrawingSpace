@@ -40,8 +40,10 @@
       <_DrawingSpaceUnoCppShim>$(IntermediateOutputPath)native/uno_gl_shim.cpp</_DrawingSpaceUnoCppShim>
     </PropertyGroup>
     <MakeDir Directories="$(IntermediateOutputPath)native" />
+    <!-- Emscripten headers contain C++ templates. Include them BEFORE the
+         linkage block; their guards prevent reinclusion by the C source. -->
     <WriteLinesToFile File="$(_DrawingSpaceUnoCppShim)"
-                      Lines="extern &quot;C&quot; {&#xA;#include &quot;$(_DrawingSpaceUnoCShimPath)&quot;&#xA;}"
+                      Lines="#include &lt;GLES3/gl3.h&gt;&#xA;#include &lt;emscripten.h&gt;&#xA;#include &lt;emscripten/html5_webgl.h&gt;&#xA;#include &lt;string.h&gt;&#xA;#include &lt;stdint.h&gt;&#xA;extern &quot;C&quot; {&#xA;#include &quot;$(_DrawingSpaceUnoCShimPath)&quot;&#xA;}"
                       Encoding="UTF-8" Overwrite="true" WriteOnlyWhenDifferent="true" />
     <ItemGroup>
       <WasmShellNativeCompile Remove="@(_DrawingSpaceUnoCShim)" />
