@@ -49,12 +49,18 @@ namespace DrawingSpace.Text.Internal
             }
 
             // Get the typeface
-            return SKTypeface.FromFamilyName(
-                style.FontFamily, 
-                (SKFontStyleWeight)(style.FontWeight + extraWeight), 
-                style.FontWidth, 
-                style.FontItalic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright
-                ) ?? SKTypeface.CreateDefault();
+            var candidate = SKTypeface.FromFamilyName(
+                style.FontFamily,
+                (SKFontStyleWeight)(style.FontWeight + extraWeight),
+                style.FontWidth,
+                style.FontItalic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright);
+            if (candidate is null || candidate.GlyphCount == 0)
+            {
+                if (candidate is not null && !ReferenceEquals(candidate, SKTypeface.Empty))
+                    candidate.Dispose();
+                return PackagedOpenSans.Get(style.FontWeight + extraWeight, style.FontItalic);
+            }
+            return candidate;
         }
 
         /// <summary>

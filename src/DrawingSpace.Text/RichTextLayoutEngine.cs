@@ -60,11 +60,25 @@ public sealed partial class RichTextLayoutEngine : IDisposable
             if (resolve?.Invoke(shapeStyle) is { } face) return face;
             var key = (style.FontFamily, style.FontWeight, style.FontItalic);
             if (_owned.TryGetValue(key, out var cached)) return cached;
-            return _owned[key] = SKTypeface.FromFamilyName(style.FontFamily, new SKFontStyle(style.FontWeight, (int)style.FontWidth, style.FontItalic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright)) ?? SKTypeface.Default;
+            var candidate = SKTypeface.FromFamilyName(style.FontFamily,
+                new SKFontStyle(style.FontWeight, (int)style.FontWidth,
+                    style.FontItalic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright));
+            // SkiaSharp 4 can return SKTypeface.Empty for an unavailable Linux
+            // family instead of null. Never cache a zero-glyph face because it
+            // cannot produce outlines or useful fallback runs.
+            if (candidate is null || candidate.GlyphCount == 0)
+            {
+                if (candidate is not null && !ReferenceEquals(candidate, SKTypeface.Empty))
+                    candidate.Dispose();
+                candidate = PackagedOpenSans.Get(style.FontWeight, style.FontItalic);
+            }
+            return _owned[key] = candidate;
         }
         public void Dispose()
         {
-            foreach (var face in _owned.Values.Distinct()) if (!ReferenceEquals(face, SKTypeface.Default)) face.Dispose();
+            foreach (var face in _owned.Values.Distinct())
+                if (!PackagedOpenSans.IsShared(face))
+                    face.Dispose();
             _owned.Clear();
         }
     }

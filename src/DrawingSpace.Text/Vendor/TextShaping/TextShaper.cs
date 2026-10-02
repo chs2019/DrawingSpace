@@ -62,34 +62,46 @@ namespace DrawingSpace.Text.Internal
             // Store typeface
             _typeface = typeface;
 
-            // Load the typeface stream to a HarfBuzz font
+            // Prefer HarfBuzz when Skia can expose the original font bytes.
+            // Some platform font managers (notably SkiaSharp 4 on Linux/WSL)
+            // return usable SKTypeface instances whose OpenStream() is null.
+            // Keep those typefaces usable through the SKFont fallback below
+            // instead of failing the entire text layout.
             int index;
-            using (var blob = GetHarfBuzzBlob(typeface.OpenStream(out index)))
-            using (var face = new Face(blob, (uint)index))
+            var asset = typeface.OpenStream(out index);
+            if (asset != null)
             {
-                face.UnitsPerEm = typeface.UnitsPerEm;
+                using (var blob = GetHarfBuzzBlob(asset))
+                using (var face = new Face(blob, (uint)index))
+                {
+                    face.UnitsPerEm = typeface.UnitsPerEm;
 
-                _font = new HarfBuzzSharp.Font(face);
-                _font.SetScale(overScale, overScale);
-                _font.SetFunctionsOpenType();
+                    _font = new HarfBuzzSharp.Font(face);
+                    _font.SetScale(overScale, overScale);
+                    _font.SetFunctionsOpenType();
+                }
             }
 
-            // Get font metrics for this typeface
-            using (var paint = new SKPaint())
+            // Get font metrics for this typeface. SkiaSharp 4 moved all
+            // text/font state and glyph measurement from SKPaint to SKFont.
+            using (var font = new SKFont(typeface, overScale)
             {
-                paint.Typeface = typeface;
-                paint.TextSize = overScale;
-                _fontMetrics = paint.FontMetrics;
+                Subpixel = true,
+                Edging = SKFontEdging.Antialias
+            })
+            {
+                _fontMetrics = font.Metrics;
 
-                // This is a temporary hack until SkiaSharp exposes
-                // a way to check if a font is fixed pitch.  For now
-                // we just measure and `i` and a `w` and see if they're
-                // the same width.
-                float[] widths = paint.GetGlyphWidths("iw", out var rects);
-                _isFixedPitch = widths != null && widths.Length > 1 && widths[0] == widths[1];
+                // This is a temporary hack until the fixed-pitch property is
+                // reliable for every mapped/fallback typeface. Measure 'i'
+                // and 'w' with the same SKFont used for layout.
+                var glyphs = font.GetGlyphs("iw");
+                Span<float> widths = stackalloc float[glyphs.Length];
+                Span<SKRect> bounds = stackalloc SKRect[glyphs.Length];
+                font.GetGlyphWidths(glyphs.AsSpan(), widths, bounds);
+                _isFixedPitch = widths.Length > 1 && widths[0] == widths[1];
                 if (_isFixedPitch)
                     _fixedCharacterWidth = widths[0];
-
             }
         }
 
@@ -272,6 +284,9 @@ namespace DrawingSpace.Text.Internal
         /// <returns>A TextShaper.Result representing the shaped text</returns>
         public Result Shape(ResultBufferSet bufferSet, Slice<int> codePoints, IStyle style, TextDirection direction, int clusterAdjustment, SKTypeface asFallbackFor, TextAlignment textAlignment)
         {
+            if (_font == null)
+                return ShapeWithSkia(bufferSet, codePoints, style, direction, clusterAdjustment, asFallbackFor, textAlignment);
+
             // Work out if we need to force this to a fixed pitch and if
             // so the unscale character width we need to use
             float forceFixedPitchWidth = 0;
@@ -474,6 +489,115 @@ namespace DrawingSpace.Text.Internal
                 // Done
                 return r;
             }
+        }
+
+        /// <summary>
+        /// Conservative platform-font fallback used only when the SKTypeface
+        /// cannot expose bytes to HarfBuzz. It preserves Unicode code-point
+        /// clusters, bidi visual order, metrics, fixed-pitch fallback cells,
+        /// letter spacing and super/subscript placement. Stream-backed fonts
+        /// continue through the full HarfBuzz shaping path above.
+        /// </summary>
+        private Result ShapeWithSkia(ResultBufferSet bufferSet, Slice<int> codePoints,
+            IStyle style, TextDirection direction, int clusterAdjustment,
+            SKTypeface asFallbackFor, TextAlignment textAlignment)
+        {
+            if (direction != TextDirection.LTR && direction != TextDirection.RTL)
+                throw new ArgumentException(nameof(direction));
+
+            var glyphs = _typeface.GetGlyphs(codePoints.AsSpan());
+            using var font = new SKFont(_typeface, overScale)
+            {
+                Subpixel = true,
+                Edging = SKFontEdging.Antialias
+            };
+            var widths = new float[glyphs.Length];
+            var bounds = new SKRect[glyphs.Length];
+            font.GetGlyphWidths(glyphs.AsSpan(), widths.AsSpan(), bounds.AsSpan());
+
+            float forceFixedPitchWidth = 0;
+            if (asFallbackFor != _typeface && asFallbackFor != null)
+            {
+                var originalTypefaceShaper = ForTypeface(asFallbackFor);
+                if (originalTypefaceShaper._isFixedPitch)
+                    forceFixedPitchWidth = originalTypefaceShaper._fixedCharacterWidth;
+            }
+
+            float glyphLetterSpacingAdjustment = textAlignment switch
+            {
+                TextAlignment.Right => style.LetterSpacing,
+                TextAlignment.Center => style.LetterSpacing / 2,
+                _ => 0
+            };
+
+            float glyphScale = style.FontSize / overScale;
+            float glyphVOffset = 0;
+            if (style.FontVariant == FontVariant.SuperScript)
+            {
+                glyphScale *= 0.65f;
+                glyphVOffset -= style.FontSize * 0.35f;
+            }
+            if (style.FontVariant == FontVariant.SubScript)
+            {
+                glyphScale *= 0.65f;
+                glyphVOffset += style.FontSize * 0.1f;
+            }
+
+            var r = new Result
+            {
+                GlyphIndicies = bufferSet.GlyphIndicies.Add(glyphs.Length, false),
+                GlyphPositions = bufferSet.GlyphPositions.Add(glyphs.Length, false),
+                Clusters = bufferSet.Clusters.Add(glyphs.Length, false),
+                CodePointXCoords = bufferSet.CodePointXCoords.Add(codePoints.Length, false)
+            };
+            r.CodePointXCoords.Fill(0);
+
+            float cursorX = 0;
+            float fixedCursorX = 0;
+            var rtl = direction == TextDirection.RTL;
+            for (var visual = 0; visual < glyphs.Length; visual++)
+            {
+                var source = rtl ? glyphs.Length - 1 - visual : visual;
+                var glyph = glyphs[source];
+
+                r.GlyphIndicies[visual] = glyph;
+                r.Clusters[visual] = source + clusterAdjustment;
+                r.GlyphPositions[visual] = new SKPoint(
+                    cursorX + glyphLetterSpacingAdjustment, glyphVOffset);
+
+                if (!rtl)
+                    r.CodePointXCoords[source] = cursorX;
+
+                var advance = widths[source] * glyphScale;
+                if (advance == 0 && codePoints[source] == 0x2029)
+                    advance = style.FontSize * 2 / 3;
+
+                cursorX += advance + style.LetterSpacing;
+
+                if (forceFixedPitchWidth != 0)
+                {
+                    fixedCursorX += forceFixedPitchWidth * glyphScale;
+                    if (fixedCursorX > cursorX)
+                    {
+                        r.GlyphPositions[visual].X += (fixedCursorX - cursorX) / 2;
+                        cursorX = fixedCursorX;
+                    }
+                    else
+                    {
+                        fixedCursorX = cursorX;
+                    }
+                }
+
+                if (rtl)
+                    r.CodePointXCoords[source] = cursorX;
+            }
+
+            if (rtl && codePoints.Length != 0)
+                r.CodePointXCoords[0] = cursorX;
+
+            r.EndXCoord = new SKPoint(cursorX, 0);
+            ApplyFontMetrics(ref r, style.FontSize);
+            return r;
         }
 
         private void ApplyFontMetrics(ref Result result, float fontSize)

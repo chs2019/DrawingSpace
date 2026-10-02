@@ -23,9 +23,24 @@ async function until(predicate, message, timeout = 15000) {
 }
 const visible = e => e.enabled && e.width > 0 && e.height > 0 && e.x >= 0 && e.y >= 0
   && e.x + e.width / 2 < size.width && e.y + e.height / 2 < size.height;
-async function click(name) {
-  const state = await until(s => s.elements.some(e => e.name === name && visible(e)), `Missing visible control: ${name}`);
-  const e = state.elements.find(e => e.name === name && visible(e));
+async function click(name, scope = () => true) {
+  // Text commits and undo/redo can replace the external-data pane before its
+  // deferred layout settles. Use three distinct stable observations, exactly
+  // one target, and one real pointer click; never retry a mutating command.
+  let previous, lastObservation, stable = 0;
+  const state = await until(s => {
+    if (s.observation === lastObservation) return false;
+    lastObservation = s.observation;
+    const matches = s.elements.filter(e => e.name === name && visible(e) && scope(e));
+    if (matches.length !== 1) { previous = undefined; stable = 0; return false; }
+    const e = matches[0];
+    const key = JSON.stringify([s.revision, s.propertyRebuilds, e.x, e.y, e.width, e.height]);
+    stable = key === previous ? stable + 1 : 0; previous = key;
+    return stable >= 2;
+  }, `Missing, ambiguous or unsettled control: ${name}`);
+  const e = state.elements.find(e => e.name === name && visible(e) && scope(e));
+  messages.push(`POINTER ${JSON.stringify({ name, observation: state.observation, revision: state.revision,
+    automationId: e.automationId, x: e.x, y: e.y, width: e.width, height: e.height })}`);
   await page.mouse.click(e.x + e.width / 2, e.y + e.height / 2); await page.waitForTimeout(250);
 }
 async function enter(name, value) { await click(name); await page.keyboard.press('Control+a'); await page.keyboard.type(value); }
@@ -46,8 +61,10 @@ async function label(value) {
   await until(s => !s.editingText && asset(s).text === value, 'Edited label did not commit');
 }
 async function upload(progress, reversed = false) {
-  const chooser = page.waitForEvent('filechooser'); await click('Open Excel');
-  await (await chooser).setFiles({ name: 'assets.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: workbookFixture(progress, reversed) });
+  // Observe both promises immediately, so a missed click reports inside this
+  // scenario instead of surfacing as an unhandled filechooser rejection.
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), click('Open Excel')]);
+  await chooser.setFiles({ name: 'assets.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: workbookFixture(progress, reversed) });
   await until(s => s.status.startsWith('Loaded workbook assets.xlsx'), 'Excel picker did not load workbook');
   await click('Excel worksheet'); await page.keyboard.press('Home'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
   await enter('Excel header row', '3'); await enter('Source identity', 'assets');
@@ -108,13 +125,14 @@ try {
   await check('Excel-linked values drive the existing vector data-graphic renderer and SVG export', async () => {
     await click('Data Bars'); await click('Apply Data Graphic');
     await until(s => asset(s).dataGraphics.includes('DataBar') && asset(s).data.Progress === '65', 'Data bar was not driven by Excel data');
-    await click('File'); const pending = page.waitForEvent('download'); await click('SVG');
-    const svg = await fs.readFile(await (await pending).path(), 'utf8');
+    await click('File');
+    const [download] = await Promise.all([page.waitForEvent('download'), click('SVG')]);
+    const svg = await fs.readFile(await download.path(), 'utf8');
     assert.match(svg, /data-graphics-for=/); assert.match(svg, /Renamed equipment/);
   });
   await check('Native saves preserve Excel row identity and accepted refresh baseline', async () => {
-    const pending = page.waitForEvent('download'); await click('Save');
-    const document = JSON.parse(await fs.readFile(await (await pending).path(), 'utf8'));
+    const [download] = await Promise.all([page.waitForEvent('download'), click('Save', e => e.automationId === 'QuickAccess.Save')]);
+    const document = JSON.parse(await fs.readFile(await download.path(), 'utf8'));
     const shape = document.pages.flatMap(p => p.shapes).find(s => s.id === id);
     assert.equal(shape.dataBinding.sourceId, 'assets'); assert.equal(shape.dataBinding.rowKey, '0001');
     assert.equal(shape.dataBinding.baseline.Progress, '65'); assert.equal(shape.data.Progress, '65');

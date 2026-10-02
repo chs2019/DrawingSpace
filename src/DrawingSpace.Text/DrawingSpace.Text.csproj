@@ -6,12 +6,19 @@
     <RootNamespace>DrawingSpace.Text.Internal</RootNamespace>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
-    <PackageLicenseExpression>Apache-2.0 AND MIT</PackageLicenseExpression>
-    <Description>SkiaSharp 3 and HarfBuzz rich text layout, Unicode bidirectional processing, line breaking and styled paragraphs.</Description>
+    <PackageLicenseExpression>Apache-2.0 AND MIT AND OFL-1.1</PackageLicenseExpression>
+    <Description>SkiaSharp 4 and HarfBuzz rich text layout, Unicode bidirectional processing, line breaking and styled paragraphs.</Description>
     <NoWarn>$(NoWarn);CS0618;CS1591</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="SkiaSharp" Version="3.119.2" />
+    <PackageReference Include="SkiaSharp" Version="4.153.1" />
+    <PackageReference Include="Uno.Fonts.OpenSans" Version="2.9.4" PrivateAssets="all" GeneratePathProperty="true" />
+    <EmbeddedResource Include="$(PkgUno_Fonts_OpenSans)/lib/net7.0/Uno.Fonts.OpenSans/Fonts/OpenSans-Regular.ttf" LogicalName="DrawingSpace.Text.Internal.Fonts.OpenSans-Regular.ttf" />
+    <EmbeddedResource Include="$(PkgUno_Fonts_OpenSans)/lib/net7.0/Uno.Fonts.OpenSans/Fonts/OpenSans-Bold.ttf" LogicalName="DrawingSpace.Text.Internal.Fonts.OpenSans-Bold.ttf" />
+    <EmbeddedResource Include="$(PkgUno_Fonts_OpenSans)/lib/net7.0/Uno.Fonts.OpenSans/Fonts/OpenSans-Italic.ttf" LogicalName="DrawingSpace.Text.Internal.Fonts.OpenSans-Italic.ttf" />
+    <EmbeddedResource Include="$(PkgUno_Fonts_OpenSans)/lib/net7.0/Uno.Fonts.OpenSans/Fonts/OpenSans-BoldItalic.ttf" LogicalName="DrawingSpace.Text.Internal.Fonts.OpenSans-BoldItalic.ttf" />
+    <EmbeddedResource Include="LICENSE.OpenSans.txt" LogicalName="DrawingSpace.Text.Internal.Fonts.LICENSE.OpenSans.txt" />
+    <None Update="LICENSE.OpenSans.txt" Pack="true" PackagePath="licenses/" />
     <PackageReference Include="HarfBuzzSharp" Version="8.3.1.3" />
     <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" Version="8.3.1.3" />
     <PackageReference Include="HarfBuzzSharp.NativeAssets.Win32" Version="8.3.1.3" />
