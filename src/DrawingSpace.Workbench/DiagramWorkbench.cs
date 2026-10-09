@@ -5,6 +5,7 @@ namespace DrawingSpace.Workbench;
 
 public sealed partial class DiagramWorkbench : UserControl, IDisposable
 {
+    private static readonly int GridSnap = 100;
     private readonly IWorkspaceStorage _storage;
     private readonly OfficeRibbon _ribbon = new();
     private readonly StencilPane _stencils = new();
@@ -119,7 +120,7 @@ public sealed partial class DiagramWorkbench : UserControl, IDisposable
     public void Insert(StencilMaster master)
     {
         Surface.FinishTextEdit(true); var center = Surface.ViewCenter;
-        var shape = master.Create(new(Math.Round(center.X / 8) * 8, Math.Round(center.Y / 8) * 8));
+        var shape = master.Create(new(Math.Round(center.X /GridSnap) * GridSnap, Math.Round(center.Y / GridSnap) * GridSnap));
         Session.AddShape(shape); Session.Tool = EditorTool.Pointer; Surface.FocusCanvas();
     }
     private void StartStencilDrag(StencilMaster master, PointerRoutedEventArgs e)
