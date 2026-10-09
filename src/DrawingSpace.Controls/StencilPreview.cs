@@ -17,7 +17,7 @@ public sealed class StencilPreview : SKCanvasElement
         var shape = Master.Create(new(Master.Width / 2, Master.Height / 2));
         var scale = (float)Math.Min((area.Width - 12) / shape.Width, (area.Height - 8) / shape.Height);
         canvas.Save(); canvas.Translate((float)(area.Width - shape.Width * scale) / 2, (float)(area.Height - shape.Height * scale) / 2); canvas.Scale(scale);
-        using var path = ShapeGeometry.Create(shape); using var details = ShapeGeometry.Details(shape);
+        using var path = ShapeGeometry.Create(shape).Snapshot(); using var details = ShapeGeometry.Details(shape);
         using var fill = new SKPaint { IsAntialias = true, Color = SKColor.Parse("#F8FAFD") };
         using var stroke = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, Color = SKColor.Parse("#426385"), StrokeWidth = 1.3f / scale };
         canvas.DrawPath(path, fill); canvas.DrawPath(path, stroke); canvas.DrawPath(details, stroke);
