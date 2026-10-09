@@ -16,7 +16,7 @@ public sealed class RenderingTests
         foreach (var master in StencilCatalog.All.SelectMany(s => s.Masters))
         {
             var shape = master.Create(new(512, 512)); using var path = ShapeGeometry.Create(shape);
-            if (shape.Kind != ShapeKind.Text) Assert.False(path.IsEmpty);
+            if (shape.Kind != ShapeKind.Text) Assert.False(path.Snapshot().IsEmpty);
             renderer.DrawShape(surface.Canvas, shape);
         }
     }
