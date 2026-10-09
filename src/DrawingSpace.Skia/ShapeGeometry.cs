@@ -8,16 +8,16 @@ namespace DrawingSpace.Skia;
 public static partial class ShapeGeometry
 {
     public static SKRect Rect(RectD r) => new((float)r.Left, (float)r.Top, (float)r.Right, (float)r.Bottom);
-    public static SKPath Create(Shape shape)
+    public static SKPathBuilder Create(Shape shape)
     {
         if (shape.Geometry.Count > 0)
         {
-            var combined = new SKPath();
+            var combined = new SKPathBuilder();
             foreach (var figure in shape.Geometry) { using var part = CreateFigure(shape, figure); combined.AddPath(part); }
             return combined;
         }
-        if (shape.IsGroupAnchor) return new SKPath();
-        var path = new SKPath();
+        if (shape.IsGroupAnchor) return new SKPathBuilder();
+        var path = new SKPathBuilder();
         var x = (float)shape.X; var y = (float)shape.Y; var w = (float)shape.Width; var h = (float)shape.Height;
         void M(float a, float b) => path.MoveTo(x + a * w, y + b * h);
         void L(float a, float b) => path.LineTo(x + a * w, y + b * h);
@@ -73,12 +73,53 @@ public static partial class ShapeGeometry
             case ShapeKind.Annotation: M(.22f, 0); L(0, 0); L(0, 1); L(.22f, 1); break;
             case ShapeKind.Container: path.AddRoundRect(Rect(shape.Bounds), 4, 4); break;
             case ShapeKind.Server: path.AddRoundRect(Rect(shape.Bounds), 4, 4); break;
+
+            case ShapeKind.Verteilung: M(.5f, .0f); L(.5f,1.0f); M(.3f, .5f); L(1.0f, 0.5f); M(.5f, .5f); path.AddCircle(.5f, .5f, .1f);
+                break;
+            case ShapeKind.Zweig: M(.0f,.5f); L(1.0f,0.5f);M(.2f, .3f); L(.2f, .7f); M(.8f, .3f); L(.8f, .7f);
+                break;
+            case ShapeKind.Zaehler:
+                Polygon((.15f, .15f), (.15f, .85f), (.85f, .85f), (.85f, .15f));
+                M(.15f, .35f); L(.85f, .35f); M(.0f, .5f); L(.15f, .5f); M(.85f, .5f); L(1.0f, .5f);
+                break;
+            case ShapeKind.Hak:
+                Polygon((.15f, .15f), (.15f, .85f), (.85f, .85f), (.85f, .15f));
+                M(.0f, .5f); L(1.0f, .5f);
+                break;
+            case ShapeKind.Sicherung:
+                Polygon((.15f, .35f), (.15f, .65f), (.85f, .65f), (.85f, .35f));
+                M(.0f, .5f); L(1.0f, .5f);
+                break;
+            case ShapeKind.Rcd: M(.0f, .5f); L(.2f, .5f); M(.8f, .5f); L(1.0f, .5f); M(.2f, .5f); L(.75f, .3f);
+                break;
+            case ShapeKind.Gluehlampe:
+                M(.25f, .25f); L(.75f, .75f); M(.75f, .25f); L(.25f, .75f); M(.0f, .5f); L(.5f, .5f); break;
+            case ShapeKind.Halogenlampe:
+                M(.25f, .25f); L(.75f, .75f); M(.75f, .25f); L(.25f, .75f); M(.0f, .5f); L(.5f, .5f); break;
+            case ShapeKind.Leuchtstoff1X:
+                M(.2f, .2f); L(.2f, .8f); M(1.0f, .2f); L(1.0f, .8f); M(.0f, .5f); L(.2f, .5f);
+                M(.2f,.3f); L(1.0f, .3f); M(.2f, .7f); L(1.0f, .7f);
+                break;
+            case ShapeKind.Leuchtstoff2X:
+                M(.2f, .2f); L(.2f, .8f); M(1.0f, .2f); L(1.0f, .8f); M(.0f, .5f); L(.2f, .5f);
+                M(.2f,.3f); L(1.0f, .3f); M(.2f, .7f); L(1.0f, .7f);
+                break;
+            case ShapeKind.Leuchtstoff3X:
+                M(.2f, .2f); L(.2f, .8f); M(1.0f, .2f); L(1.0f, .8f); M(.0f, .5f); L(1.0f, .5f);
+                M(.2f,.3f); L(1.0f, .3f); M(.2f, .7f); L(1.0f, .7f);
+                break;
+            case ShapeKind.Leuchtstoff4X:
+                M(.2f, .1f); L(.2f, .9f); M(1.0f, .1f); L(1.0f, .9f); M(.0f, .5f); L(0.2f, .5f);
+                M(.2f,.2f); L(1.0f, .2f); M(.2f, .8f); L(1.0f, .8f);
+                M(.2f,.35f); L(1.0f, .35f); M(.2f, .65f); L(1.0f, .65f);
+                break;
             default: path.AddRect(Rect(shape.Bounds)); break;
         }
         return path;
     }
     public static SKPath Details(Shape shape)
     {
+        var r = 0.05f;
         var p = new SKPath();
         if (shape.Geometry.Count > 0 || shape.IsGroupAnchor) return p;
         var b = shape.Bounds;
@@ -93,6 +134,8 @@ public static partial class ShapeGeometry
             case ShapeKind.Server:
                 for (var i = 0; i < 3; i++) { var yy = .14f + i * .2f; p.AddRect(new(x + .13f * w, y + yy * h, x + .87f * w, y + (yy + .12f) * h)); }
                 break;
+
+            case ShapeKind.Verteilung: p.AddOval(new SKRect(.5f-r, .5f-r, r+.5f, r+.5f)); break;
         }
         return p;
     }
@@ -116,7 +159,7 @@ public static partial class ShapeGeometry
             return false;
         }
         if (shape.Kind is ShapeKind.Text or ShapeKind.Annotation or ShapeKind.Container) return true;
-        using var path = Create(shape);
+        using var path = Create(shape).Snapshot();
         if (path.Contains((float)local.X, (float)local.Y)) return true;
         if (tolerance <= 0) return false;
         using var stroke = new SKPaint { Style = SKPaintStyle.Stroke, StrokeWidth = (float)tolerance * 2 };
