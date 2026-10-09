@@ -15,7 +15,7 @@ public partial class App : Application
     public App() { InitializeComponent(); RequestedTheme = ApplicationTheme.Light; }
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
-        _window = new Window { Title = "DrawingSpace" };
+        _window = new Window { Title = "epINSTROM" };
         _window.Content = new Grid { Background = OfficeTheme.Brush("#F8F8F8"), Children = { new TextBlock { Text = "DrawingSpace", Foreground = OfficeTheme.Brush(OfficeTheme.Accent), FontSize = 28, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } } };
         _window.Activate();
         try
