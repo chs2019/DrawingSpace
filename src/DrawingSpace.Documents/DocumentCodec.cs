@@ -170,7 +170,7 @@ public static partial class DocumentCodec
         if (cells is null || cells.Count > 4096) throw new InvalidDataException("Invalid ShapeSheet cell collection.");
         foreach (var (key, cell) in cells) { Text(key, 256); if (cell is null) throw new InvalidDataException("Invalid ShapeSheet cell."); Text(cell.Formula, 32768); Text(cell.Value, 32768); Text(cell.Unit, 128); }
     }
-    private static void Color(string value) { if (value is null || !HexColor().IsMatch(value)) throw new InvalidDataException("Colors must be #RRGGBB or #AARRGGBB."); }
+    private static void Color(string value) { if (!HexColor().IsMatch(value)) throw new InvalidDataException("Colors must be #RRGGBB or #AARRGGBB."); }
     [GeneratedRegex("^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")]
     private static partial Regex HexColor();
 }
