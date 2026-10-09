@@ -11,7 +11,7 @@ public static class SampleDiagrams
     };
     private static Shape Node(DiagramPage page, string name, ShapeKind kind, double x, double y, double width = 152, double height = 64, string fill = "#E8F0FA")
     {
-        var shape = new Shape { Name = name.Replace('\n', ' '), Text = name, Kind = kind, X = x, Y = y, Width = width, Height = height, Style = new() { Fill = fill, Stroke = "#4672C4", TextColor = "#243A5A" } };
+        var shape = new Shape { Name = name.Replace('\n', ' '), Text = name, Kind = kind, X = x, Y = y, Width = width, Height = height, Style = new() { Fill = fill, Stroke ="#4672C4", TextColor = "#243A5A" } };
         page.Shapes.Add(shape);
         return shape;
     }
@@ -38,7 +38,7 @@ public static class SampleDiagrams
         var order = Node(page, "Create order", ShapeKind.Rectangle, 378, 424);
         var receive = Node(page, "Receive goods", ShapeKind.Rectangle, 116, 424);
         var finish = Node(page, "Complete", ShapeKind.RoundedRectangle, 116, 586, 152, 48, "#E7F1E8"); finish.Style.Stroke = "#6C9870";
-        var invoice = Node(page, "Invoice", ShapeKind.Document, 378, 578, 152, 72);
+        var invoice = Node(page, "Invoice", ShapeKind.Document, 378, 578, 152, 100);
         var archive = Node(page, "Records", ShapeKind.Cylinder, 656, 564, 120, 96);
         var note = Node(page, "Approval policy\n\nRequests over €5,000 require manager and finance approval.", ShapeKind.Note, 868, 263, 178, 170, "#FFFBE9");
         note.Style.Stroke = "#D2BD71"; note.Style.FontSize = 13;
@@ -61,7 +61,7 @@ public static class SampleDiagrams
             Link(page, ceo, manager, "", PortSide.South, PortSide.North);
             for (var j = 0; j < 2; j++)
             {
-                var team = Node(page, $"Team {i * 2 + j + 1}\nSpecialists", ShapeKind.Rectangle, 84 + i * 320 + j * 164, 536, 152, 72, "#F3F6FA");
+                var team = Node(page, $"Team {i * 2 + j + 1}\nSpecialists", ShapeKind.Rectangle, 84 + i * 320 + j * 164, 536, 152, 100, "#F3F6FA");
                 Link(page, manager, team, "", PortSide.South, PortSide.North);
             }
         }
@@ -85,18 +85,18 @@ public static class SampleDiagrams
     {
         var page = new DiagramPage { Name = "epINSTROM Anlagenplan" };
         Title(page, "Wohnhaus Beispielprojekt", "Anlagenplan eines kleinen Wohnhauses");
-        var einspeisung = Node(page, "Einspeisung", ShapeKind.Rectangle, 72, 144, 72, 72, "#4672C4"); einspeisung.Style.TextColor = "#FFFFFF";
-        var netzanschluss = Node(page, "Netz-\nanschl", ShapeKind.Rectangle, 144, 144, 72, 72);
+        var einspeisung = Node(page, "Einspeisung", ShapeKind.Rectangle, 100, 200, 100, 100, "#4672C4"); einspeisung.Style.TextColor = "#FFFFFF";
+        var netzanschluss = Node(page, "Netz-\nanschl", ShapeKind.Rectangle, 200, 200, 100, 100);
         netzanschluss.Data = new() { ["Owner"] = "Requestor", ["Department"] = "Operations", ["Status"] = "In progress" };
-        var hak = Node(page, "HAK", ShapeKind.Rectangle, 216, 144, 72, 72, "#FFF5DE"); hak.Style.Stroke = "#D6A540";
-        var zaehler = Node(page, "kWh", ShapeKind.Rectangle, 288, 144, 72, 72);
-        var hausanschluss = Node(page, "Haus-\nanschl", ShapeKind.Rectangle, 360, 144, 72, 72);
-        var verteilungHv1 = Node(page, "HV", ShapeKind.Rectangle, 432, 144, 72, 72);
-        var verteilungHv2 = Node(page, "HV", ShapeKind.Rectangle, 432, 216, 72, 72);
-        var verteilungHv3 = Node(page, "HV", ShapeKind.Rectangle, 432, 288, 72, 72);
-        var verteilungHv4 = Node(page, "HV", ShapeKind.Rectangle, 432, 360, 72, 72);
-        var verteilungHv5 = Node(page, "HV", ShapeKind.Rectangle, 432, 432, 72, 72);
-        var verteilungHv6 = Node(page, "HV", ShapeKind.Rectangle, 432, 504, 72, 72);
+        var hak = Node(page, "HAK", ShapeKind.Rectangle, 300, 200, 100, 100, "#FFF5DE"); hak.Style.Stroke = "#D6A540";
+        var zaehler = Node(page, "kWh", ShapeKind.Rectangle, 400, 200, 100, 100);
+        var hausanschluss = Node(page, "Haus-\nanschl", ShapeKind.Rectangle, 500, 200, 100, 100);
+        var verteilungHv1 = Node(page, "HV", ShapeKind.Rectangle, 600, 200, 100, 100);
+        var verteilungHv2 = Node(page, "HV", ShapeKind.Rectangle, 600, 300, 100, 100);
+        var verteilungHv3 = Node(page, "HV", ShapeKind.Rectangle, 600, 400, 100, 100);
+        var verteilungHv4 = Node(page, "HV", ShapeKind.Rectangle, 600, 500, 100, 100);
+        var verteilungHv5 = Node(page, "HV", ShapeKind.Rectangle, 600, 600, 100, 100);
+        var verteilungHv6 = Node(page, "HV", ShapeKind.Rectangle, 600, 700, 100, 100);
         var note = Node(page, "Approval policy\n\nRequests over €5,000 require manager and finance approval.", ShapeKind.Note, 868, 263, 178, 170, "#FFFBE9");
         note.Style.Stroke = "#D2BD71"; note.Style.FontSize = 13;
         return new() { Title = "epINSTROM Wohnhaus Testprojekt", Pages = [page] };
