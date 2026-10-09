@@ -8,11 +8,13 @@ namespace DrawingSpace.Skia;
 
 public sealed partial class SceneRenderer : IDisposable
 {
+    private static readonly int GridRasterMajor = 100;
+    private static readonly int GridRasterMinor = GridRasterMajor / 5;
     private readonly OrthogonalRouter _router = new();
     private RichTextLayoutEngine? _richText;
     private IReadOnlyDictionary<string, IReadOnlyList<LineJump>> _jumps = new Dictionary<string, IReadOnlyList<LineJump>>();
     public bool LineJumpBudgetExceeded { get; private set; }
-    public RichTextLayoutEngine TextEngine => _richText ??= new(style => _fallbackTypeface is null ? null : _fallbackStyles.GetValueOrDefault((style.Bold, style.Italic), _fallbackTypeface));
+    private RichTextLayoutEngine TextEngine => _richText ??= new(style => _fallbackTypeface is null ? null : _fallbackStyles.GetValueOrDefault((style.Bold, style.Italic), _fallbackTypeface));
     private readonly Dictionary<string, RouteResult> _routes = [];
     private readonly Dictionary<string, (SKTypeface Typeface, SKFont Font)> _fonts = [];
     private DiagramPage? _routePage;
@@ -20,7 +22,7 @@ public sealed partial class SceneRenderer : IDisposable
     private long _revision = -1;
     private SKTypeface? _fallbackTypeface;
     private readonly Dictionary<(bool Bold, bool Italic), SKTypeface> _fallbackStyles = [];
-    public void SetTypeface(SKTypeface typeface)
+    private void SetTypeface(SKTypeface typeface)
     {
         _richText?.Dispose(); _richText = null;
         foreach (var entry in _fonts.Values) { entry.Font.Dispose(); entry.Typeface.Dispose(); }
@@ -91,11 +93,11 @@ public sealed partial class SceneRenderer : IDisposable
         var left = Math.Max(0, visible.Left); var top = Math.Max(0, visible.Top);
         var right = Math.Min(page.Width, visible.Right); var bottom = Math.Min(page.Height, visible.Bottom);
         using var paint = new SKPaint { Color = SKColor.Parse("#EDF0F4"), StrokeWidth = .45f };
-        for (var x = Math.Ceiling(left / 16) * 16; x <= right; x += 16) canvas.DrawLine((float)x, (float)top, (float)x, (float)bottom, paint);
-        for (var y = Math.Ceiling(top / 16) * 16; y <= bottom; y += 16) canvas.DrawLine((float)left, (float)y, (float)right, (float)y, paint);
+        for (var x = Math.Ceiling(left / GridRasterMinor) * GridRasterMinor; x <= right; x += GridRasterMinor) canvas.DrawLine((float)x, (float)top, (float)x, (float)bottom, paint);
+        for (var y = Math.Ceiling(top / GridRasterMinor) * GridRasterMinor; y <= bottom; y += GridRasterMinor) canvas.DrawLine((float)left, (float)y, (float)right, (float)y, paint);
         paint.Color = SKColor.Parse("#E1E6ED");
-        for (var x = Math.Ceiling(left / 96) * 96; x <= right; x += 96) canvas.DrawLine((float)x, (float)top, (float)x, (float)bottom, paint);
-        for (var y = Math.Ceiling(top / 96) * 96; y <= bottom; y += 96) canvas.DrawLine((float)left, (float)y, (float)right, (float)y, paint);
+        for (var x = Math.Ceiling(left / GridRasterMajor) * GridRasterMajor; x <= right; x += GridRasterMajor) canvas.DrawLine((float)x, (float)top, (float)x, (float)bottom, paint);
+        for (var y = Math.Ceiling(top / GridRasterMajor) * GridRasterMajor; y <= bottom; y += GridRasterMajor) canvas.DrawLine((float)left, (float)y, (float)right, (float)y, paint);
     }
     public void DrawShape(SKCanvas canvas, Shape shape)
     {
@@ -115,7 +117,7 @@ public sealed partial class SceneRenderer : IDisposable
         }
         else
         {
-            using var path = ShapeGeometry.Create(shape);
+            using var path = ShapeGeometry.Create(shape).Snapshot();
             using var details = ShapeGeometry.Details(shape);
             if (shape.Kind != ShapeKind.Annotation) canvas.DrawPath(path, fill);
             if (shape.Style.StrokeWidth > 0) { canvas.DrawPath(path, stroke); canvas.DrawPath(details, stroke); }
@@ -152,7 +154,7 @@ public sealed partial class SceneRenderer : IDisposable
         TextEngine.Layout(shape).Paint(canvas, new(shape.X, shape.Y));
     }
 
-    public void DrawConnector(SKCanvas canvas, Connector connector, RouteResult route)
+    private void DrawConnector(SKCanvas canvas, Connector connector, RouteResult route)
     {
         if (route.Points.Count < 2) return;
         using var dash = connector.Dashed ? SKPathEffect.CreateDash([7, 5], 0) : null;
