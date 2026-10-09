@@ -15,7 +15,7 @@ public enum ShapeBooleanOperation { Union, Intersect, Subtract, Combine }
 public static class ShapeBooleanGeometry
 {
     public const int MaximumOperands = 128;
-    public const int MaximumSegments = 32768;
+    private const int MaximumSegments = 32768;
     private const int MaximumNativePoints = 131072;
     private const int ConicSubdivisionPower = 5;
 
@@ -71,7 +71,7 @@ public static class ShapeBooleanGeometry
         try
         {
             if (shape.Geometry.Count == 0)
-                area = ShapeGeometry.Create(shape);
+                area = ShapeGeometry.Create(shape).Snapshot();
             else
             {
                 foreach (var figure in shape.Geometry.Where(g => g.Filled))
