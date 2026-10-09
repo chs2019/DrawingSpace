@@ -15,7 +15,7 @@ internal static class ApplicationFonts
             {
                 var uri = new Uri($"ms-appx:///Uno.Fonts.OpenSans/Fonts/OpenSans-{variant}.ttf");
                 var file = await StorageFile.GetFileFromApplicationUriAsync(uri);
-                using var stream = await file.OpenStreamForReadAsync();
+                await using var stream = await file.OpenStreamForReadAsync();
                 using var bytes = new MemoryStream(); await stream.CopyToAsync(bytes);
                 using var data = SKData.CreateCopy(bytes.ToArray());
                 loaded.Add(SKTypeface.FromData(data) ?? throw new InvalidDataException($"Cannot load the packaged {variant} font."));

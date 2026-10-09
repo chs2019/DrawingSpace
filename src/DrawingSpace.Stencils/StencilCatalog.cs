@@ -6,54 +6,43 @@ public static class StencilCatalog
 {
     public static IReadOnlyList<Stencil> All { get; } =
     [
-        new("flowchart", "Basic Flowchart Shapes", [
-            new("process", "Process", ShapeKind.Rectangle),
-            new("decision", "Decision", ShapeKind.Decision, 144, 96),
-            new("subprocess", "Subprocess", ShapeKind.PredefinedProcess),
-            new("terminator", "Start/End", ShapeKind.RoundedRectangle, 144, 48),
-            new("document", "Document", ShapeKind.Document, 144, 80),
-            new("data", "Data", ShapeKind.Data),
-            new("database", "Database", ShapeKind.Cylinder, 112, 96),
-            new("preparation", "Preparation", ShapeKind.Preparation),
-            new("manual-input", "Manual input", ShapeKind.ManualInput),
-            new("manual-operation", "Manual operation", ShapeKind.ManualOperation),
-            new("delay", "Delay", ShapeKind.Delay),
-            new("display", "Display", ShapeKind.Display),
-            new("off-page", "Off-page reference", ShapeKind.OffPage, 72, 80),
-            new("on-page", "On-page reference", ShapeKind.Ellipse, 48, 48)
+        new("instromVerteiler", "Verteiler und Leiter", [
+            new("einspeisung", "Einspeisung", ShapeKind.Rectangle, 72, 72),
+            new("verteilung", "Verteilung", ShapeKind.Rectangle, 72, 72),
+            new("zweig", "Zweig", ShapeKind.Rectangle, 72, 72),
+            new("baustromverteiler", "Baustromverteiler", ShapeKind.Rectangle, 72, 72),
+            new("zaehler", "Zähler", ShapeKind.Rectangle, 72, 72),
+            new("hak", "Hausanschlusskasten", ShapeKind.Rectangle, 72, 72)
         ]),
-        new("basic", "Basic Shapes", [
-            new("rectangle", "Rectangle", ShapeKind.Rectangle),
-            new("rounded", "Rounded rectangle", ShapeKind.RoundedRectangle),
-            new("ellipse", "Ellipse", ShapeKind.Ellipse, 144, 88),
-            new("circle", "Circle", ShapeKind.Ellipse, 88, 88),
-            new("triangle", "Triangle", ShapeKind.Triangle, 100, 88),
-            new("hexagon", "Hexagon", ShapeKind.Hexagon, 120, 88),
-            new("pentagon", "Pentagon", ShapeKind.Pentagon, 104, 96),
-            new("star", "Star", ShapeKind.Star, 96, 96),
-            new("cross", "Cross", ShapeKind.Cross, 88, 88),
-            new("ring", "Ring", ShapeKind.Ring, 88, 88),
-            new("arrow", "Block arrow", ShapeKind.Arrow, 128, 64),
-            new("text", "Text", ShapeKind.Text, 160, 40)
+        new("instromVerbraucher", "Verbraucher", [
+            new("allgverbraucher", "Allg. Verbraucher", ShapeKind.Rectangle, 72, 72),
+            new("allgtaumheizung", "Allg. Raumheizung", ShapeKind.Rectangle, 72, 72),
+            new("allgverbr3steckdose", "Allg. Verbraucher an Drehstromsteckdose", ShapeKind.Rectangle, 72, 72),
+            new("backofen", "Backofen", ShapeKind.Rectangle, 72, 72),
+            new("bhkw", "Blockheizkraftwerk", ShapeKind.Rectangle, 72, 72),
+            new("steckdose3p", "Drehstromsteckdose", ShapeKind.Rectangle, 72, 72),
+            new("durchlauferhitzer", "Durchlauferhitzer", ShapeKind.Rectangle, 72, 72),
+            new("heisswasserspeicher", "Heisswasserspeicher 30-80 Liter", ShapeKind.Rectangle, 72, 72),
+            new("kochfeld3er", "Kochfeld mit 3 Platten", ShapeKind.Rectangle, 72, 72),
+            new("kochfeld4er", "Kochfeld mit 4 Platten", ShapeKind.Rectangle, 72, 72),
+            new("kompensationsanlage", "Kompensationsanlage", ShapeKind.Rectangle, 72, 72),
         ]),
-        new("network", "Network and Computers", [
-            new("cloud", "Cloud", ShapeKind.Cloud, 160, 104),
-            new("server", "Server", ShapeKind.Server, 80, 120),
-            new("storage", "Storage", ShapeKind.Cylinder, 112, 96),
-            new("endpoint", "Workstation", ShapeKind.Display, 136, 88),
-            new("network-user", "User", ShapeKind.Person, 64, 104),
-            new("network-zone", "Network zone", ShapeKind.Container, 420, 280)
+        new("instromSicherheit", "Sichern und Schalten", [
+            new("schmelzsicherung", "Sicherung", ShapeKind.Rectangle, 72, 72),
+            new("rcd", "RCD", ShapeKind.Rectangle, 72, 72),
+            new("sicherungslasttrenner", "Sicherungslasttrenner", ShapeKind.Rectangle, 72, 72),
+            new("lsrcdkombi", "Kombinierter RCD-LS-Schalter", ShapeKind.Rectangle, 72, 72),
+            new("selthlschutzschalter", "Selektiver Hauptleitungsschutzschalter", ShapeKind.Rectangle, 72, 72),
+            new("schalter", "Schalter", ShapeKind.Rectangle, 72, 72),
+            new("leistungsschalter", "Leistungsschalter", ShapeKind.Rectangle, 72, 72),
+            new("leitungsschutzschalter", "Leitungsschutzschalter", ShapeKind.Rectangle, 72, 72),
+            new("motorschutzschalter", "Motorschutzschalter", ShapeKind.Rectangle, 72, 72),
         ]),
-        new("organization", "Organization Chart", [
-            new("executive", "Executive", ShapeKind.RoundedRectangle, 176, 80),
-            new("manager", "Manager", ShapeKind.Rectangle, 176, 72),
-            new("position", "Position", ShapeKind.Rectangle, 160, 64),
-            new("person", "Person", ShapeKind.Person, 64, 104),
-            new("team", "Team frame", ShapeKind.Container, 400, 240)
+        new("instromReference", "Seiten Referenzen", [
+            new("off-page", "Off-page reference", ShapeKind.OffPage, 72, 72),
+            new("on-page", "On-page reference", ShapeKind.Ellipse, 72, 72)
         ]),
-        new("annotations", "Containers and Callouts", [
-            new("container", "Container", ShapeKind.Container, 400, 260),
-            new("lane", "Swimlane", ShapeKind.Container, 880, 160),
+        new("annotations", "Beschriftungen", [
             new("callout", "Callout", ShapeKind.Callout, 184, 104),
             new("note", "Note", ShapeKind.Note, 152, 128),
             new("annotation", "Annotation", ShapeKind.Annotation, 160, 88),

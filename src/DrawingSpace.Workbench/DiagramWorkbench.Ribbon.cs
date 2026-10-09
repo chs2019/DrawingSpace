@@ -36,12 +36,14 @@ public sealed partial class DiagramWorkbench
     private IEnumerable<RibbonGroup> FileGroups()
     {
         yield return new("File", Command("New", OfficeIcon.New, () => RunAsync(() => NewAsync("blank")), true), Command("Open", OfficeIcon.Open, () => RunAsync(OpenAsync), true), Command("Save", OfficeIcon.Save, () => RunAsync(SaveAsync), true), Command("Rename", OfficeIcon.Text, () => RunAsync(RenameDocumentAsync), true));
-        yield return new("New from template", Stack(Command("Basic Flowchart", OfficeIcon.Connector, () => RunAsync(() => NewAsync("flowchart"))), Command("Organization Chart", OfficeIcon.Layout, () => RunAsync(() => NewAsync("organization"))), Command("Network Diagram", OfficeIcon.App, () => RunAsync(() => NewAsync("network")))));
+        yield return new("New from template", Stack(Command("Basic Flowchart", OfficeIcon.Connector, () => RunAsync(() => NewAsync("flowchart"))), Command("Organization Chart", OfficeIcon.Layout, () => RunAsync(() => NewAsync("organization"))), Command("epINSTROM Schematic", OfficeIcon.App, () => RunAsync(() => NewAsync("schematic")))));
         yield return new("Export", Command("SVG", OfficeIcon.Export, () => RunAsync(() => ExportAsync("svg")), true), Command("PNG", OfficeIcon.Export, () => RunAsync(() => ExportAsync("png")), true), Command("PDF", OfficeIcon.Print, () => RunAsync(() => ExportAsync("pdf")), true));
         yield return new("Visio", Command("VSDX", OfficeIcon.Save, () => RunAsync(() => ExportVisioAsync(DrawingSpace.Visio.VisioPackageKind.Drawing)), true),
             Command("VSSX", OfficeIcon.App, () => RunAsync(() => ExportVisioAsync(DrawingSpace.Visio.VisioPackageKind.Stencil)), true),
             Command("VSTX", OfficeIcon.Page, () => RunAsync(() => ExportVisioAsync(DrawingSpace.Visio.VisioPackageKind.Template)), true));
         yield return new("Local files", Stack(Command("Save recovery copy", OfficeIcon.Save, () => RunAsync(WriteRecoveryAsync)), Command("About file formats", OfficeIcon.Help, () => RunAsync(() => ShowMessageAsync("File formats", "Open supports native JSON, VSDX drawings, VSTX templates, VSSX stencil libraries and VDX XML. VSSX imports masters into the current drawing. SVG, PNG, PDF and Visio packages can be exported. Binary VSD is not decoded. Unsupported Visio constructs are reported in Import Diagnostics. Files remain on this device.")))));
+        yield return new ("Administration", Stack(Command("Preferences", OfficeIcon.Settings, () => RunAsync(() => ShowMessageAsync("ToDo","Not implemented yet"))),
+                                                            Command("Account", OfficeIcon.User, () => RunAsync(() => ShowMessageAsync("Todo", "Not implemented yet")))));
     }
     private IEnumerable<RibbonGroup> HomeGroups()
     {

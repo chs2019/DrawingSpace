@@ -8,7 +8,9 @@ public static class OfficeTheme
     public const string TextColor = "#242424";
     public const string Secondary = "#666666";
     public const string Separator = "#DADADA";
-    public static FontFamily Font { get; set; } = new("ms-appx:///Uno.Fonts.OpenSans/Fonts/OpenSans.ttf");
+    public static FontFamily Font { get; set; } = new("ms-appx:///DrawingSpace.App/Assets/Fonts/OpenSans.ttf");
+    public static FontFamily TextFont { get; set; } = new("ms-appx:///DrawingSpace.App/Assets/Fonts/news-cycle-v26-latin_latin-ext-regular.ttf");
+    public static FontFamily DisplayFont { get; set; } = new("ms-appx:///DrawingSpace.App/Assets/Fonts/varela-round-v21-latin_latin-ext-regular.ttf");
     public static SolidColorBrush Brush(string color)
     {
         var c = SKColor.Parse(color);

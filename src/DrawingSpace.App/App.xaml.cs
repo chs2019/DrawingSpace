@@ -25,7 +25,7 @@ public partial class App : Application
 #else
             IWorkspaceStorage storage = new DesktopWorkspaceStorage();
 #endif
-            var document = SampleDiagrams.Flowchart(); string? warning = null;
+            var document = SampleDiagrams.Schematic(); string? warning = null;
             try
             {
                 var saved = await storage.ReadRecoveryAsync();
