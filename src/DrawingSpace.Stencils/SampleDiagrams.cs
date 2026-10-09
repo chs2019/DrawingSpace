@@ -7,7 +7,7 @@ public static class SampleDiagrams
 {
     public static DiagramDocument Create(string template = "flowchart") => template switch
     {
-        "organization" => Organization(), "network" => Network(), "blank" => new() { Title = "Drawing1" }, _ => Flowchart()
+        "organization" => Organization(), "network" => Network(), "schematic" => Schematic(), "blank" => new() { Title = "Drawing1" }, _ => Flowchart()
     };
     private static Shape Node(DiagramPage page, string name, ShapeKind kind, double x, double y, double width = 152, double height = 64, string fill = "#E8F0FA")
     {
@@ -80,5 +80,25 @@ public static class SampleDiagrams
         Link(page, gateway, server); Link(page, gateway, database); Link(page, gateway, workstation);
         foreach (var s in new[] { gateway, server, database, workstation }) s.Data = new() { ["Host"] = s.Name.ToLowerInvariant().Replace(' ', '-'), ["Status"] = "Online" };
         return new() { Title = "Network overview", Pages = [page] };
+    }
+    public static DiagramDocument Schematic()
+    {
+        var page = new DiagramPage { Name = "epINSTROM Anlagenplan" };
+        Title(page, "Wohnhaus Beispielprojekt", "Anlagenplan eines kleinen Wohnhauses");
+        var einspeisung = Node(page, "Einspeisung", ShapeKind.Rectangle, 72, 144, 72, 72, "#4672C4"); einspeisung.Style.TextColor = "#FFFFFF";
+        var netzanschluss = Node(page, "Netz-\nanschl", ShapeKind.Rectangle, 144, 144, 72, 72);
+        netzanschluss.Data = new() { ["Owner"] = "Requestor", ["Department"] = "Operations", ["Status"] = "In progress" };
+        var hak = Node(page, "HAK", ShapeKind.Rectangle, 216, 144, 72, 72, "#FFF5DE"); hak.Style.Stroke = "#D6A540";
+        var zaehler = Node(page, "kWh", ShapeKind.Rectangle, 288, 144, 72, 72);
+        var hausanschluss = Node(page, "Haus-\nanschl", ShapeKind.Rectangle, 360, 144, 72, 72);
+        var verteilungHv1 = Node(page, "HV", ShapeKind.Rectangle, 432, 144, 72, 72);
+        var verteilungHv2 = Node(page, "HV", ShapeKind.Rectangle, 432, 216, 72, 72);
+        var verteilungHv3 = Node(page, "HV", ShapeKind.Rectangle, 432, 288, 72, 72);
+        var verteilungHv4 = Node(page, "HV", ShapeKind.Rectangle, 432, 360, 72, 72);
+        var verteilungHv5 = Node(page, "HV", ShapeKind.Rectangle, 432, 432, 72, 72);
+        var verteilungHv6 = Node(page, "HV", ShapeKind.Rectangle, 432, 504, 72, 72);
+        var note = Node(page, "Approval policy\n\nRequests over €5,000 require manager and finance approval.", ShapeKind.Note, 868, 263, 178, 170, "#FFFBE9");
+        note.Style.Stroke = "#D2BD71"; note.Style.FontSize = 13;
+        return new() { Title = "epINSTROM Wohnhaus Testprojekt", Pages = [page] };
     }
 }
