@@ -6,5 +6,5 @@ public enum OfficeIcon
     Rectangle, Ellipse, Fill, Line, Align, Distribute, Group, Ungroup, Front, Back,
     Rotate, Delete, Search, ChevronDown, ChevronRight, Add, Minus, Fit, Grid, Ruler,
     Layers, Data, Comment, Check, Export, Print, Help, Lock, Eye, Close, Settings,
-    Page, Landscape, Portrait, Bold, Italic, Center, Left, Right, Layout
+    Page, Landscape, Portrait, Bold, Italic, Center, Left, Right, Layout, Preferences, User
 }
