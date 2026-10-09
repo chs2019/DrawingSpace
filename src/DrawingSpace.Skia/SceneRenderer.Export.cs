@@ -122,7 +122,7 @@ public sealed partial class SceneRenderer
             }
             else
             {
-                using var geometry = ShapeGeometry.Create(shape); using var details = ShapeGeometry.Details(shape);
+                using var geometry = ShapeGeometry.Create(shape).Snapshot(); using var details = ShapeGeometry.Details(shape);
                 Path(geometry, shape.Kind == ShapeKind.Annotation ? "none" : shapeFill, shape.Style.Stroke, shape.Style.StrokeWidth, shape.Style.Opacity, shape.Style.Dashed);
                 Path(details, "none", shape.Style.Stroke, shape.Style.StrokeWidth, shape.Style.Opacity);
             }
