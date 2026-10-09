@@ -5,7 +5,10 @@ public enum ShapeKind
     Rectangle, RoundedRectangle, Ellipse, Decision, Triangle, Document, Data, Cylinder,
     Hexagon, Cloud, Person, Server, Note, PredefinedProcess, Preparation, ManualInput,
     ManualOperation, Delay, Display, OffPage, Text, Container, Cross, Star, Arrow,
-    Pentagon, Callout, Ring, Annotation
+    Pentagon, Callout, Ring, Annotation,
+    Verteilung, Zweig, Baustrom, Zaehler, Hak,
+    Sicherung, Rcd,
+    Gluehlampe, Halogenlampe, Leuchtstoff1X, Leuchtstoff2X, Leuchtstoff3X, Leuchtstoff4X
 }
 
 public enum PortSide { Auto, North, East, South, West }
